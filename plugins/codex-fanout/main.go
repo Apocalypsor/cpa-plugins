@@ -74,7 +74,7 @@ const (
 	abiVersion    uint32 = 1
 	schemaVersion uint32 = 1
 	pluginName           = "codex-fanout"
-	pluginVersion        = "0.1.0"
+	pluginVersion        = "0.2.0"
 )
 
 var copyFields = []string{"access_token", "id_token", "expired", "last_refresh"}
@@ -86,85 +86,282 @@ const indexHTML = `<!doctype html>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Codex Fan-out</title>
   <style>
-    :root{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-    body{margin:0;background:#f6f7f9;color:#111827}
-    main{max-width:860px;margin:0 auto;padding:32px 20px}
-    h1{font-size:24px;margin:0 0 20px}
-    label{display:block;font-weight:600;margin:18px 0 6px}
-    input{box-sizing:border-box;width:100%;font:inherit;padding:10px 12px;border:1px solid #c7ccd3;border-radius:8px;background:white;color:#111827}
-    .row{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
-    button{font:inherit;font-weight:650;border:0;border-radius:8px;padding:10px 14px;background:#0f766e;color:white;cursor:pointer}
-    button.secondary{background:#374151}
+    :root{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--primary-color:#2563eb;--bg-primary:#fff;--bg-secondary:#f8fafc;--bg-tertiary:#eef2f7;--text-primary:#0f172a;--text-secondary:#475569;--text-tertiary:#64748b;--border-color:#d9e2ec;--error-color:#dc2626;--radius-md:8px}
+    body{margin:0;background:var(--bg-secondary);color:var(--text-primary)}
+    main{max-width:980px;margin:0 auto;padding:32px 20px}
+    h1{font-size:28px;font-weight:700;margin:0 0 24px}
+    .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
+    .card{background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
+    .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
+    .title{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700}
+    .icon{width:24px;height:24px;border-radius:6px;background:linear-gradient(180deg,#b1a7ff,#7a9dff 55%,#3941ff)}
+    label{display:block;font-weight:600;margin:14px 0 6px}
+    input{box-sizing:border-box;width:100%;font:inherit;padding:10px 12px;border:1px solid var(--border-color);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary)}
+    .row{display:flex;gap:10px;align-items:center;margin-top:14px;flex-wrap:wrap}
+    button{font:inherit;font-weight:650;border:0;border-radius:var(--radius-md);padding:10px 14px;background:var(--primary-color);color:white;cursor:pointer}
+    button.secondary{background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color)}
     button:disabled{opacity:.55;cursor:not-allowed}
     .check{display:flex;gap:8px;align-items:center;font-weight:500}
     .check input{width:auto}
-    pre{margin-top:18px;padding:14px;min-height:260px;white-space:pre-wrap;overflow:auto;border-radius:8px;background:#111827;color:#e5e7eb;font:13px ui-monospace,SFMono-Regular,Menlo,monospace}
-    .hint{color:#4b5563;font-size:13px;margin-top:8px}
-    @media (prefers-color-scheme:dark){body{background:#0b1020;color:#e5e7eb}input{background:#111827;color:#e5e7eb;border-color:#374151}.hint{color:#9ca3af}}
+    .hint{color:var(--text-secondary);font-size:13px;line-height:1.6;margin:0 0 12px}
+    .box{background:var(--bg-secondary);border:1px dashed var(--border-color);border-radius:var(--radius-md);padding:12px;margin-top:12px}
+    .box strong{display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px}
+    .url{font-weight:700;word-break:break-all;overflow-wrap:anywhere;line-height:1.5}
+    .status{padding:10px 12px;border-radius:var(--radius-md);font-size:14px;margin-top:12px;background:rgba(37,99,235,.12);color:var(--primary-color)}
+    .status.success{background:rgba(34,197,94,.12);color:#16a34a}
+    .status.error{background:rgba(220,38,38,.12);color:var(--error-color)}
+    pre{margin-top:18px;padding:14px;min-height:260px;white-space:pre-wrap;overflow:auto;border-radius:var(--radius-md);background:#111827;color:#e5e7eb;font:13px ui-monospace,SFMono-Regular,Menlo,monospace}
+    @media (prefers-color-scheme:dark){:root{--bg-primary:#111827;--bg-secondary:#0b1020;--bg-tertiary:#1f2937;--text-primary:#e5e7eb;--text-secondary:#a7b0bf;--text-tertiary:#8b95a6;--border-color:#374151}}
+    @media (max-width:520px){main{padding:20px 14px}.grid{grid-template-columns:1fr}.card-head{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
 <main>
   <h1>Codex Fan-out</h1>
-  <label for="key">CPA management key</label>
-  <input id="key" type="password" autocomplete="off" placeholder="remote-management.secret-key">
-  <div class="hint">The key stays in this tab only. The plugin uses CPA host auth callbacks server-side.</div>
 
-  <label for="master">Optional master filenames</label>
-  <input id="master" placeholder="codex-...json, codex-...json">
+  <div class="grid">
+    <section class="card">
+      <div class="card-head">
+        <div class="title"><span class="icon" aria-hidden="true"></span><span>Codex OAuth</span></div>
+        <button id="auth">Verify & sync</button>
+      </div>
+      <p class="hint">Start Codex OAuth, wait for CPA to save the new credential, then fan out that token to sibling auth files with the same email.</p>
+      <label for="key">CPA management key</label>
+      <input id="key" type="password" autocomplete="off" placeholder="remote-management.secret-key">
+      <div id="authUrl" class="box" hidden>
+        <strong>Authorization link</strong>
+        <div id="authUrlText" class="url"></div>
+        <div class="row">
+          <button id="openAuth" class="secondary">Open link</button>
+          <button id="copyAuth" class="secondary">Copy link</button>
+        </div>
+      </div>
+      <label for="callback">Callback URL</label>
+      <input id="callback" autocomplete="off" placeholder="http://localhost:1455/auth/callback?code=...&state=...">
+      <div class="row">
+        <button id="submitCallback" class="secondary">Submit callback URL</button>
+      </div>
+      <div id="status" class="status" hidden></div>
+    </section>
 
-  <div class="row">
-    <label class="check"><input id="noBackup" type="checkbox"> skip .bak files</label>
-  </div>
-  <div class="row">
-    <button id="dry">Dry run</button>
-    <button id="apply" class="secondary">Apply</button>
+    <section class="card">
+      <div class="card-head">
+        <div class="title">Manual fan-out</div>
+      </div>
+      <label for="master">Optional master filenames</label>
+      <input id="master" placeholder="codex-...json, codex-...json">
+      <div class="row">
+        <label class="check"><input id="noBackup" type="checkbox"> skip .bak files</label>
+      </div>
+      <div class="row">
+        <button id="dry" class="secondary">Dry run</button>
+        <button id="apply" class="secondary">Apply</button>
+      </div>
+    </section>
   </div>
   <pre id="out">Ready.</pre>
 </main>
 <script>
+const ENC_PREFIX = "enc::v1::";
+const SECRET_SALT = "cli-proxy-api-webui::secure-storage";
 const out = document.getElementById("out");
 const key = document.getElementById("key");
 const master = document.getElementById("master");
 const noBackup = document.getElementById("noBackup");
 const dry = document.getElementById("dry");
 const apply = document.getElementById("apply");
+const auth = document.getElementById("auth");
+const authUrl = document.getElementById("authUrl");
+const authUrlText = document.getElementById("authUrlText");
+const openAuth = document.getElementById("openAuth");
+const copyAuth = document.getElementById("copyAuth");
+const callback = document.getElementById("callback");
+const submitCallback = document.getElementById("submitCallback");
+const statusBox = document.getElementById("status");
 
-async function run(dryRun) {
-  const token = key.value.trim();
-  if (!token) {
-    out.textContent = "Missing CPA management key.";
-    key.focus();
-    return;
+let currentAuthURL = "";
+let currentState = "";
+let pollTimer = 0;
+let pollDeadline = 0;
+
+function xorBytes(data, keyBytes) {
+  const result = new Uint8Array(data.length);
+  for (let i = 0; i < data.length; i++) result[i] = data[i] ^ keyBytes[i % keyBytes.length];
+  return result;
+}
+
+function deobfuscate(payload) {
+  if (!payload || !payload.startsWith(ENC_PREFIX)) return payload;
+  const keyBytes = new TextEncoder().encode(SECRET_SALT + "|" + window.location.host + "|" + navigator.userAgent);
+  const raw = Uint8Array.from(atob(payload.slice(ENC_PREFIX.length)), c => c.charCodeAt(0));
+  return new TextDecoder().decode(xorBytes(raw, keyBytes));
+}
+
+function readSavedManagementKey() {
+  for (const name of ["cli-proxy-auth", "managementKey"]) {
+    const raw = localStorage.getItem(name);
+    if (!raw) continue;
+    try {
+      const parsed = JSON.parse(deobfuscate(raw));
+      if (typeof parsed === "string") return parsed;
+      const saved = parsed && (parsed.state || parsed);
+      if (saved && typeof saved.managementKey === "string") return saved.managementKey;
+    } catch {}
   }
+  return "";
+}
+
+function token() {
+  const value = key.value.trim();
+  if (!value) {
+    setStatus("Missing CPA management key.", "error");
+    key.focus();
+    throw new Error("missing key");
+  }
+  return value;
+}
+
+function authHeaders(json) {
+  const headers = {"Authorization": "Bearer " + token()};
+  if (json) headers["Content-Type"] = "application/json";
+  return headers;
+}
+
+async function readJSON(res) {
+  const text = await res.text();
+  let data = {};
+  try { data = text ? JSON.parse(text) : {}; } catch { data = {error: text}; }
+  if (!res.ok) throw new Error(data.error || data.message || data.output || ("HTTP " + res.status));
+  return data;
+}
+
+function setStatus(text, kind) {
+  statusBox.hidden = false;
+  statusBox.textContent = text;
+  statusBox.className = "status" + (kind ? " " + kind : "");
+}
+
+function setAuthURL(url) {
+  currentAuthURL = url || "";
+  authUrl.hidden = !currentAuthURL;
+  authUrlText.textContent = currentAuthURL;
+}
+
+async function run(dryRun, extra) {
   dry.disabled = true;
   apply.disabled = true;
   out.textContent = dryRun ? "Running dry-run..." : "Applying fan-out...";
   try {
     const res = await fetch("/v0/management/plugins/codex-fanout/fanout", {
       method: "POST",
-      headers: {
-        "Authorization": "Bearer " + token,
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({
+      headers: authHeaders(true),
+      body: JSON.stringify(Object.assign({
         dry_run: dryRun,
         no_backup: noBackup.checked,
         master: master.value.trim()
-      })
+      }, extra || {}))
     });
-    const text = await res.text();
-    let data;
-    try { data = JSON.parse(text); } catch { data = { output: text }; }
-    out.textContent = data.output || text || ("HTTP " + res.status);
+    const data = await readJSON(res);
+    out.textContent = data.output || ("HTTP " + res.status);
+    return data;
   } catch (err) {
-    out.textContent = String(err);
+    if (err.message !== "missing key") out.textContent = String(err);
+    throw err;
   } finally {
     dry.disabled = false;
     apply.disabled = false;
   }
 }
 
+async function startOAuth() {
+  let popup = null;
+  try { popup = window.open("about:blank", "_blank"); } catch {}
+  auth.disabled = true;
+  setAuthURL("");
+  currentState = "";
+  if (pollTimer) window.clearInterval(pollTimer);
+  setStatus("Starting Codex OAuth...", "");
+  try {
+    const res = await fetch("/v0/management/codex-auth-url?is_webui=true", {headers: authHeaders(false)});
+    const data = await readJSON(res);
+    if (!data.url || !data.state) throw new Error("CPA did not return an auth URL/state");
+    currentState = data.state;
+    setAuthURL(data.url);
+    if (popup && !popup.closed) popup.location = data.url;
+    setStatus("Waiting for Codex authentication...", "");
+    startPolling(data.state);
+  } catch (err) {
+    if (popup && !popup.closed) popup.close();
+    setStatus("OAuth start failed: " + err.message, "error");
+    auth.disabled = false;
+  }
+}
+
+function startPolling(state) {
+  pollDeadline = Date.now() + 5 * 60 * 1000;
+  pollTimer = window.setInterval(async () => {
+    if (Date.now() > pollDeadline) {
+      window.clearInterval(pollTimer);
+      pollTimer = 0;
+      auth.disabled = false;
+      setStatus("OAuth timed out.", "error");
+      return;
+    }
+    try {
+      const res = await fetch("/v0/management/get-auth-status?state=" + encodeURIComponent(state), {headers: authHeaders(false)});
+      const data = await readJSON(res);
+      if (data.status === "wait") return;
+      window.clearInterval(pollTimer);
+      pollTimer = 0;
+      auth.disabled = false;
+      if (data.status === "ok") {
+        setStatus("Authentication succeeded. Running fan-out...", "success");
+        try {
+          const result = await run(false, {latest_only: true, master: ""});
+          setStatus(result && result.ok === false ? "Fan-out failed." : "Authentication succeeded and fan-out completed.", result && result.ok === false ? "error" : "success");
+        } catch (err) {
+          setStatus("Fan-out failed: " + err.message, "error");
+        }
+      } else {
+        setStatus("Authentication failed: " + (data.error || "unknown error"), "error");
+      }
+    } catch (err) {
+      window.clearInterval(pollTimer);
+      pollTimer = 0;
+      auth.disabled = false;
+      setStatus("OAuth polling failed: " + err.message, "error");
+    }
+  }, 3000);
+}
+
+async function sendCallback() {
+  const redirectURL = callback.value.trim();
+  if (!redirectURL) {
+    setStatus("Missing callback URL.", "error");
+    callback.focus();
+    return;
+  }
+  submitCallback.disabled = true;
+  try {
+    await readJSON(await fetch("/v0/management/oauth-callback", {
+      method: "POST",
+      headers: authHeaders(true),
+      body: JSON.stringify({provider: "codex", redirect_url: redirectURL, state: currentState})
+    }));
+    setStatus("Callback submitted. Waiting for authentication...", "");
+  } catch (err) {
+    setStatus("Callback submit failed: " + err.message, "error");
+  } finally {
+    submitCallback.disabled = false;
+  }
+}
+
+const savedKey = readSavedManagementKey();
+if (savedKey) key.value = savedKey;
+auth.addEventListener("click", startOAuth);
+openAuth.addEventListener("click", () => currentAuthURL && window.open(currentAuthURL, "_blank"));
+copyAuth.addEventListener("click", () => currentAuthURL && navigator.clipboard.writeText(currentAuthURL));
+submitCallback.addEventListener("click", sendCallback);
 dry.addEventListener("click", () => run(true));
 apply.addEventListener("click", () => run(false));
 </script>
@@ -273,9 +470,10 @@ type managementResponse struct {
 }
 
 type fanoutRequest struct {
-	DryRun   bool   `json:"dry_run"`
-	NoBackup bool   `json:"no_backup"`
-	Master   string `json:"master"`
+	DryRun     bool   `json:"dry_run"`
+	NoBackup   bool   `json:"no_backup"`
+	Master     string `json:"master"`
+	LatestOnly bool   `json:"latest_only"`
 }
 
 type hostAuthFileEntry struct {
@@ -309,9 +507,10 @@ type hostAuthSaveRequest struct {
 }
 
 type fanoutOptions struct {
-	DryRun  bool
-	Backup  bool
-	Masters map[string]bool
+	DryRun     bool
+	Backup     bool
+	LatestOnly bool
+	Masters    map[string]bool
 }
 
 type authFile struct {
@@ -469,9 +668,10 @@ func handleFanoutAPI(body []byte) managementResponse {
 		}
 	}
 	opts := fanoutOptions{
-		DryRun:  req.DryRun,
-		Backup:  !req.NoBackup,
-		Masters: parseMasters(req.Master),
+		DryRun:     req.DryRun,
+		Backup:     !req.NoBackup,
+		LatestOnly: req.LatestOnly,
+		Masters:    parseMasters(req.Master),
 	}
 	var out bytes.Buffer
 	if err := runFanout(opts, &out); err != nil {
@@ -537,6 +737,24 @@ func runFanout(opts fanoutOptions, out *bytes.Buffer) error {
 		return nil
 	}
 	groups := groupByEmail(auths)
+	if opts.LatestOnly {
+		master := latestMaster(auths)
+		if master == nil {
+			fmt.Fprintln(out, "no codex auth file with refresh_token found")
+			return nil
+		}
+		email := stringField(master.Rec, "email")
+		if email == "" {
+			return fmt.Errorf("latest master %s has no email", master.Name)
+		}
+		members := groups[email]
+		if len(members) == 0 {
+			return fmt.Errorf("no codex auth group for %s", email)
+		}
+		fmt.Fprintf(out, "latest master: %s (%s)\n", master.Name, email)
+		groups = map[string][]*authFile{email: members}
+		opts.Masters = map[string]bool{master.Name: true}
+	}
 	total := 0
 	for email, members := range groups {
 		master := chooseMaster(members, opts.Masters)
@@ -657,6 +875,22 @@ func chooseMaster(members []*authFile, manual map[string]bool) *authFile {
 	best := pool[0]
 	for _, a := range pool[1:] {
 		if parseRefreshTime(a).After(parseRefreshTime(best)) {
+			best = a
+		}
+	}
+	return best
+}
+
+func latestMaster(auths []*authFile) *authFile {
+	var best *authFile
+	for _, a := range auths {
+		if stringField(a.Rec, "refresh_token") == "" {
+			continue
+		}
+		if stringField(a.Rec, "email") == "" {
+			continue
+		}
+		if best == nil || parseRefreshTime(a).After(parseRefreshTime(best)) {
 			best = a
 		}
 	}

@@ -27,6 +27,28 @@ func TestChooseMasterPrefersRefreshTokenThenLatest(t *testing.T) {
 	}
 }
 
+func TestLatestMasterUsesNewestRefreshTokenWithEmail(t *testing.T) {
+	older := &authFile{Name: "older.json", Rec: map[string]any{
+		"email":         "a@example.com",
+		"refresh_token": "rt-old",
+		"last_refresh":  "2026-01-01T00:00:00Z",
+	}}
+	newer := &authFile{Name: "newer.json", Rec: map[string]any{
+		"email":         "b@example.com",
+		"refresh_token": "rt-new",
+		"last_refresh":  "2026-01-02T00:00:00Z",
+	}}
+	noRefresh := &authFile{Name: "no-refresh.json", Rec: map[string]any{
+		"email":        "c@example.com",
+		"last_refresh": "2026-01-03T00:00:00Z",
+	}}
+
+	got := latestMaster([]*authFile{older, newer, noRefresh})
+	if got != newer {
+		t.Fatalf("latest master = %s, want %s", got.Name, newer.Name)
+	}
+}
+
 func TestPlanUpdatesCopiesAccessFieldsAndClearsSiblingRefreshToken(t *testing.T) {
 	master := &authFile{Name: "master.json", Rec: map[string]any{
 		"access_token":  "access",
