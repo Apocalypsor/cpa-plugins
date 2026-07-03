@@ -1,0 +1,7 @@
+*.dylib
+*.so
+*.dll
+*.h
+*.zip
+checksums.txt
+dist/

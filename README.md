@@ -1,0 +1,69 @@
+# CPA Plugins
+
+Personal CLIProxyAPI plugin registry and plugin sources.
+
+## Layout
+
+```text
+registry/registry.json        # CPA plugin source
+plugins/<plugin-id>/          # one dynamic-library plugin per directory
+.github/workflows/release.yml # builds release zips for every plugin
+```
+
+Current plugin:
+
+- `codex-fanout`: fan out one Codex access token to sibling workspace auth files.
+  It includes a small CPA-hosted UI at
+  `/v0/resource/plugins/codex-fanout/index.html`.
+
+## Use In CLIProxyAPI
+
+Add this source to `config.yaml`:
+
+```yaml
+plugins:
+  enabled: true
+  dir: "/CLIProxyAPI/plugins"
+  store-sources:
+    - "https://raw.githubusercontent.com/Apocalypsor/cpa-plugins/main/registry/registry.json"
+  configs:
+    codex-fanout:
+      enabled: true
+      priority: 1
+```
+
+For Docker, mount the plugin directory so installed plugins survive container
+updates:
+
+```yaml
+services:
+  cli-proxy-api:
+    volumes:
+      - ./config.yaml:/CLIProxyAPI/config.yaml
+      - ./auths:/root/.cli-proxy-api
+      - ./plugins:/CLIProxyAPI/plugins
+```
+
+## Publish
+
+Releases are repo-wide. A tag like `v0.1.0` builds these assets for every plugin:
+
+```text
+<plugin-id>_0.1.0_linux_amd64.zip
+<plugin-id>_0.1.0_linux_arm64.zip
+checksums.txt
+```
+
+Each zip contains exactly one dynamic library at the zip root:
+
+```text
+codex-fanout.so
+```
+
+To add another plugin:
+
+1. Create `plugins/<plugin-id>/` with its Go plugin source.
+2. Add one entry to `registry/registry.json`.
+3. Tag a new repo release.
+
+Skipped: per-plugin versioning. Add it when two plugins need independent release cadence.

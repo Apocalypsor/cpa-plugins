@@ -1,0 +1,63 @@
+name: release
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            goos: linux
+            goarch: amd64
+            ext: so
+          - os: ubuntu-24.04-arm
+            goos: linux
+            goarch: arm64
+            ext: so
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.x"
+      - name: Build plugins
+        shell: bash
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          mkdir -p dist build
+          for plugin_dir in plugins/*; do
+            [ -d "$plugin_dir" ] || continue
+            id="$(basename "$plugin_dir")"
+            (
+              cd "$plugin_dir"
+              go test ./...
+              CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
+                go build -buildmode=c-shared -o "../../build/${id}.${{ matrix.ext }}" .
+            )
+            zip -j "dist/${id}_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.zip" "build/${id}.${{ matrix.ext }}"
+          done
+      - uses: actions/upload-artifact@v7
+        with:
+          name: plugins-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: dist/*.zip
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - run: sha256sum dist/*.zip > dist/checksums.txt
+      - uses: softprops/action-gh-release@v3
+        with:
+          files: dist/*
