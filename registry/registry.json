@@ -9,6 +9,15 @@
       "repository": "https://github.com/Apocalypsor/cpa-plugins",
       "homepage": "https://github.com/Apocalypsor/cpa-plugins/tree/main/plugins/codex-fanout",
       "tags": ["codex", "auth"]
+    },
+    {
+      "id": "telegram-401-alert",
+      "name": "Telegram 401 Alert",
+      "description": "Send a Telegram notification when CLIProxyAPI reports an account HTTP 401 failure.",
+      "author": "Apocalypsor",
+      "repository": "https://github.com/Apocalypsor/cpa-plugins",
+      "homepage": "https://github.com/Apocalypsor/cpa-plugins/tree/main/plugins/telegram-401-alert",
+      "tags": ["telegram", "alert", "auth"]
     }
   ]
 }

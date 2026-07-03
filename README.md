@@ -10,11 +10,14 @@ plugins/<plugin-id>/          # one dynamic-library plugin per directory
 .github/workflows/release.yml # builds release zips for every plugin
 ```
 
-Current plugin:
+Current plugins:
 
 - `codex-fanout`: fan out one Codex access token to sibling workspace auth files.
   It includes a small CPA-hosted UI at
   `/v0/resource/plugins/codex-fanout/index.html`.
+- `telegram-401-alert`: send a Telegram notification when CPA reports an account
+  HTTP 401 failure. Configure it at
+  `/v0/resource/plugins/telegram-401-alert/index.html`.
 
 ## Use In CLIProxyAPI
 
@@ -30,7 +33,13 @@ plugins:
     codex-fanout:
       enabled: true
       priority: 1
+    telegram-401-alert:
+      enabled: true
+      priority: 10
 ```
+
+Set Telegram fields from the plugin page:
+`/v0/resource/plugins/telegram-401-alert/index.html`.
 
 For Docker, mount the plugin directory so installed plugins survive container
 updates:

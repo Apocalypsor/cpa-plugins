@@ -74,7 +74,7 @@ const (
 	abiVersion    uint32 = 1
 	schemaVersion uint32 = 1
 	pluginName           = "codex-fanout"
-	pluginVersion        = "0.2.1"
+	pluginVersion        = "0.3.0"
 )
 
 var copyFields = []string{"access_token", "id_token", "expired", "last_refresh"}
