@@ -23,14 +23,28 @@ func TestReserveNotificationThrottlesByKey(t *testing.T) {
 	state.Unlock()
 
 	now := time.Unix(1000, 0)
-	if !reserveNotification("codex/a", now, time.Minute) {
+	if !reserveNotification("codex/a", now, time.Minute, false) {
 		t.Fatal("first notification should be reserved")
 	}
-	if reserveNotification("codex/a", now.Add(30*time.Second), time.Minute) {
+	if reserveNotification("codex/a", now.Add(30*time.Second), time.Minute, false) {
 		t.Fatal("duplicate notification should be throttled")
 	}
-	if !reserveNotification("codex/a", now.Add(61*time.Second), time.Minute) {
+	if !reserveNotification("codex/a", now.Add(61*time.Second), time.Minute, false) {
 		t.Fatal("notification after cooldown should be reserved")
+	}
+}
+
+func TestReserveNotificationOnce(t *testing.T) {
+	state.Lock()
+	state.lastSent = map[string]time.Time{}
+	state.Unlock()
+
+	now := time.Unix(1000, 0)
+	if !reserveNotification("email:a@example.com", now, time.Nanosecond, true) {
+		t.Fatal("first email notification should be reserved")
+	}
+	if reserveNotification("email:a@example.com", now.Add(time.Hour), time.Nanosecond, true) {
+		t.Fatal("email notification should only be reserved once")
 	}
 }
 
@@ -41,11 +55,22 @@ func TestTelegramMessageIncludesAccountFields(t *testing.T) {
 		AuthIndex: "codex-user.json",
 		Source:    "test",
 		Failure:   usageFailure{StatusCode: 401, Body: "unauthorized"},
-	})
-	for _, want := range []string{"CPA account 401", "Provider: codex", "Auth: codex-user.json", "Error: unauthorized"} {
+	}, "user@example.com")
+	for _, want := range []string{"CPA account 401", "Provider: codex", "Email: user@example.com", "Auth: codex-user.json", "Error: unauthorized"} {
 		if !strings.Contains(msg, want) {
 			t.Fatalf("message missing %q:\n%s", want, msg)
 		}
+	}
+}
+
+func TestNotificationKeyUsesEmail(t *testing.T) {
+	key, once := notificationKey(usageRecord{Provider: "codex", AuthIndex: "a"}, "User@Example.COM")
+	if key != "email:user@example.com" || !once {
+		t.Fatalf("key=%q once=%v, want email key once", key, once)
+	}
+	key, once = notificationKey(usageRecord{Provider: "codex", AuthIndex: "a"}, "")
+	if key != "account:codex/a/" || once {
+		t.Fatalf("key=%q once=%v, want account fallback", key, once)
 	}
 }
 

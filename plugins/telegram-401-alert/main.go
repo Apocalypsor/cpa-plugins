@@ -70,7 +70,7 @@ const (
 	abiVersion      uint32 = 1
 	schemaVersion   uint32 = 1
 	pluginName             = "telegram-401-alert"
-	pluginVersion          = "0.3.0"
+	pluginVersion          = "0.3.1"
 	defaultCooldown        = 30 * time.Minute
 )
 
@@ -161,6 +161,25 @@ type httpResponse struct {
 	StatusCode int         `json:"StatusCode"`
 	Headers    http.Header `json:"Headers,omitempty"`
 	Body       []byte      `json:"Body,omitempty"`
+}
+
+type hostAuthGetRequest struct {
+	AuthIndex string `json:"auth_index"`
+}
+
+type hostAuthRuntimeResponse struct {
+	Auth hostAuthFileEntry `json:"auth"`
+}
+
+type hostAuthListResponse struct {
+	Files []hostAuthFileEntry `json:"files"`
+}
+
+type hostAuthFileEntry struct {
+	ID        string `json:"id,omitempty"`
+	AuthIndex string `json:"auth_index,omitempty"`
+	Name      string `json:"name,omitempty"`
+	Email     string `json:"email,omitempty"`
 }
 
 type managementRegistration struct {
@@ -487,12 +506,13 @@ func handleUsage(raw []byte) error {
 		return nil
 	}
 
-	key := notificationKey(rec)
+	email := resolveAuthEmail(rec)
+	key, once := notificationKey(rec, email)
 	now := time.Now()
-	if !reserveNotification(key, now, cfg.Cooldown) {
+	if !reserveNotification(key, now, cfg.Cooldown, once) {
 		return nil
 	}
-	if err := sendTelegram(cfg, telegramMessage(rec)); err != nil {
+	if err := sendTelegram(cfg, telegramMessage(rec, email)); err != nil {
 		forgetReservation(key, now)
 		return err
 	}
@@ -505,11 +525,13 @@ func currentSettings() settings {
 	return state.settings
 }
 
-func reserveNotification(key string, now time.Time, cooldown time.Duration) bool {
+func reserveNotification(key string, now time.Time, cooldown time.Duration, once bool) bool {
 	state.Lock()
 	defer state.Unlock()
-	if last, ok := state.lastSent[key]; ok && now.Sub(last) < cooldown {
-		return false
+	if last, ok := state.lastSent[key]; ok {
+		if once || now.Sub(last) < cooldown {
+			return false
+		}
 	}
 	state.lastSent[key] = now
 	return true
@@ -554,10 +576,11 @@ func sendTelegram(cfg settings, text string) error {
 	return nil
 }
 
-func telegramMessage(rec usageRecord) string {
+func telegramMessage(rec usageRecord, email string) string {
 	var b strings.Builder
 	b.WriteString("CPA account 401\n")
 	writeLine(&b, "Provider", rec.Provider)
+	writeLine(&b, "Email", email)
 	writeLine(&b, "Auth", firstNonEmpty(rec.AuthIndex, rec.AuthID, rec.AuthType))
 	writeLine(&b, "Model", firstNonEmpty(rec.Alias, rec.Model))
 	writeLine(&b, "Source", rec.Source)
@@ -578,12 +601,64 @@ func writeLine(b *strings.Builder, key, value string) {
 	fmt.Fprintf(b, "%s: %s\n", key, value)
 }
 
-func notificationKey(rec usageRecord) string {
+func notificationKey(rec usageRecord, email string) (string, bool) {
+	if email = strings.ToLower(strings.TrimSpace(email)); email != "" {
+		return "email:" + email, true
+	}
 	parts := []string{rec.Provider, rec.AuthIndex, rec.AuthID}
 	if strings.TrimSpace(rec.AuthIndex) == "" && strings.TrimSpace(rec.AuthID) == "" {
 		parts = []string{rec.Provider, rec.Model}
 	}
-	return strings.Join(parts, "/")
+	return "account:" + strings.Join(parts, "/"), false
+}
+
+func resolveAuthEmail(rec usageRecord) string {
+	if rec.AuthIndex != "" {
+		if email, err := emailFromRuntimeAuth(rec.AuthIndex); err == nil && email != "" {
+			return email
+		}
+	}
+	if email, err := emailFromAuthList(rec); err == nil {
+		return email
+	}
+	return ""
+}
+
+func emailFromRuntimeAuth(authIndex string) (string, error) {
+	result, err := callHost("host.auth.get_runtime", hostAuthGetRequest{AuthIndex: strings.TrimSpace(authIndex)})
+	if err != nil {
+		return "", err
+	}
+	var resp hostAuthRuntimeResponse
+	if err := json.Unmarshal(result, &resp); err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(resp.Auth.Email), nil
+}
+
+func emailFromAuthList(rec usageRecord) (string, error) {
+	result, err := callHost("host.auth.list", map[string]any{})
+	if err != nil {
+		return "", err
+	}
+	var resp hostAuthListResponse
+	if err := json.Unmarshal(result, &resp); err != nil {
+		return "", err
+	}
+	authIndex := strings.TrimSpace(rec.AuthIndex)
+	authID := strings.TrimSpace(rec.AuthID)
+	for _, file := range resp.Files {
+		if authIndex != "" && strings.TrimSpace(file.AuthIndex) == authIndex {
+			return strings.TrimSpace(file.Email), nil
+		}
+		if authID != "" && strings.TrimSpace(file.ID) == authID {
+			return strings.TrimSpace(file.Email), nil
+		}
+		if authIndex != "" && strings.TrimSpace(file.Name) == authIndex {
+			return strings.TrimSpace(file.Email), nil
+		}
+	}
+	return "", nil
 }
 
 func defaultSettings() settings {
