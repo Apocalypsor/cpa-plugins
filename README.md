@@ -29,17 +29,7 @@ plugins:
   dir: "/CLIProxyAPI/plugins"
   store-sources:
     - "https://raw.githubusercontent.com/Apocalypsor/cpa-plugins/main/registry/registry.json"
-  configs:
-    codex-fanout:
-      enabled: true
-      priority: 1
-    telegram-401-alert:
-      enabled: true
-      priority: 10
 ```
-
-Set Telegram fields from the plugin page:
-`/v0/resource/plugins/telegram-401-alert/index.html`.
 
 For Docker, mount the plugin directory so installed plugins survive container
 updates:
