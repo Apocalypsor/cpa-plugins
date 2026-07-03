@@ -74,7 +74,7 @@ const (
 	abiVersion    uint32 = 1
 	schemaVersion uint32 = 1
 	pluginName           = "codex-fanout"
-	pluginVersion        = "0.2.0"
+	pluginVersion        = "0.2.1"
 )
 
 var copyFields = []string{"access_token", "id_token", "expired", "last_refresh"}
@@ -90,7 +90,6 @@ const indexHTML = `<!doctype html>
     body{margin:0;background:var(--bg-secondary);color:var(--text-primary)}
     main{max-width:980px;margin:0 auto;padding:32px 20px}
     h1{font-size:28px;font-weight:700;margin:0 0 24px}
-    .grid{display:grid;gap:18px;grid-template-columns:repeat(auto-fit,minmax(360px,1fr))}
     .card{background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
     .card-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:14px}
     .title{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700}
@@ -101,8 +100,6 @@ const indexHTML = `<!doctype html>
     button{font:inherit;font-weight:650;border:0;border-radius:var(--radius-md);padding:10px 14px;background:var(--primary-color);color:white;cursor:pointer}
     button.secondary{background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color)}
     button:disabled{opacity:.55;cursor:not-allowed}
-    .check{display:flex;gap:8px;align-items:center;font-weight:500}
-    .check input{width:auto}
     .hint{color:var(--text-secondary);font-size:13px;line-height:1.6;margin:0 0 12px}
     .box{background:var(--bg-secondary);border:1px dashed var(--border-color);border-radius:var(--radius-md);padding:12px;margin-top:12px}
     .box strong{display:block;font-size:13px;color:var(--text-secondary);margin-bottom:6px}
@@ -112,53 +109,36 @@ const indexHTML = `<!doctype html>
     .status.error{background:rgba(220,38,38,.12);color:var(--error-color)}
     pre{margin-top:18px;padding:14px;min-height:260px;white-space:pre-wrap;overflow:auto;border-radius:var(--radius-md);background:#111827;color:#e5e7eb;font:13px ui-monospace,SFMono-Regular,Menlo,monospace}
     @media (prefers-color-scheme:dark){:root{--bg-primary:#111827;--bg-secondary:#0b1020;--bg-tertiary:#1f2937;--text-primary:#e5e7eb;--text-secondary:#a7b0bf;--text-tertiary:#8b95a6;--border-color:#374151}}
-    @media (max-width:520px){main{padding:20px 14px}.grid{grid-template-columns:1fr}.card-head{align-items:flex-start;flex-direction:column}}
+    @media (max-width:520px){main{padding:20px 14px}.card-head{align-items:flex-start;flex-direction:column}}
   </style>
 </head>
 <body>
 <main>
   <h1>Codex Fan-out</h1>
 
-  <div class="grid">
-    <section class="card">
-      <div class="card-head">
-        <div class="title"><span class="icon" aria-hidden="true"></span><span>Codex OAuth</span></div>
-        <button id="auth">Verify & sync</button>
-      </div>
-      <p class="hint">Start Codex OAuth, wait for CPA to save the new credential, then fan out that token to sibling auth files with the same email.</p>
-      <label for="key">CPA management key</label>
-      <input id="key" type="password" autocomplete="off" placeholder="remote-management.secret-key">
-      <div id="authUrl" class="box" hidden>
-        <strong>Authorization link</strong>
-        <div id="authUrlText" class="url"></div>
-        <div class="row">
-          <button id="openAuth" class="secondary">Open link</button>
-          <button id="copyAuth" class="secondary">Copy link</button>
-        </div>
-      </div>
-      <label for="callback">Callback URL</label>
-      <input id="callback" autocomplete="off" placeholder="http://localhost:1455/auth/callback?code=...&state=...">
+  <section class="card">
+    <div class="card-head">
+      <div class="title"><span class="icon" aria-hidden="true"></span><span>Codex OAuth</span></div>
+      <button id="auth">Generate OAuth link</button>
+    </div>
+    <p class="hint">Generate an OAuth link, open or copy it, then paste the callback URL here to verify. After CPA saves the new credential, the plugin syncs that latest same-email token.</p>
+    <label for="key">CPA management key</label>
+    <input id="key" type="password" autocomplete="off" placeholder="remote-management.secret-key">
+    <div id="authUrl" class="box" hidden>
+      <strong>Authorization link</strong>
+      <div id="authUrlText" class="url"></div>
       <div class="row">
-        <button id="submitCallback" class="secondary">Submit callback URL</button>
+        <button id="openAuth" class="secondary">Open link</button>
+        <button id="copyAuth" class="secondary">Copy link</button>
       </div>
-      <div id="status" class="status" hidden></div>
-    </section>
-
-    <section class="card">
-      <div class="card-head">
-        <div class="title">Manual fan-out</div>
-      </div>
-      <label for="master">Optional master filenames</label>
-      <input id="master" placeholder="codex-...json, codex-...json">
-      <div class="row">
-        <label class="check"><input id="noBackup" type="checkbox"> skip .bak files</label>
-      </div>
-      <div class="row">
-        <button id="dry" class="secondary">Dry run</button>
-        <button id="apply" class="secondary">Apply</button>
-      </div>
-    </section>
-  </div>
+    </div>
+    <label for="callback">Callback URL</label>
+    <input id="callback" autocomplete="off" placeholder="http://localhost:1455/auth/callback?code=...&state=...">
+    <div class="row">
+      <button id="submitCallback" class="secondary">Verify callback & sync</button>
+    </div>
+    <div id="status" class="status" hidden></div>
+  </section>
   <pre id="out">Ready.</pre>
 </main>
 <script>
@@ -166,10 +146,6 @@ const ENC_PREFIX = "enc::v1::";
 const SECRET_SALT = "cli-proxy-api-webui::secure-storage";
 const out = document.getElementById("out");
 const key = document.getElementById("key");
-const master = document.getElementById("master");
-const noBackup = document.getElementById("noBackup");
-const dry = document.getElementById("dry");
-const apply = document.getElementById("apply");
 const auth = document.getElementById("auth");
 const authUrl = document.getElementById("authUrl");
 const authUrlText = document.getElementById("authUrlText");
@@ -182,7 +158,6 @@ const statusBox = document.getElementById("status");
 let currentAuthURL = "";
 let currentState = "";
 let pollTimer = 0;
-let pollDeadline = 0;
 
 function xorBytes(data, keyBytes) {
   const result = new Uint8Array(data.length);
@@ -247,19 +222,13 @@ function setAuthURL(url) {
   authUrlText.textContent = currentAuthURL;
 }
 
-async function run(dryRun, extra) {
-  dry.disabled = true;
-  apply.disabled = true;
-  out.textContent = dryRun ? "Running dry-run..." : "Applying fan-out...";
+async function runFanout() {
+  out.textContent = "Applying fan-out...";
   try {
     const res = await fetch("/v0/management/plugins/codex-fanout/fanout", {
       method: "POST",
       headers: authHeaders(true),
-      body: JSON.stringify(Object.assign({
-        dry_run: dryRun,
-        no_backup: noBackup.checked,
-        master: master.value.trim()
-      }, extra || {}))
+      body: JSON.stringify({latest_only: true})
     });
     const data = await readJSON(res);
     out.textContent = data.output || ("HTTP " + res.status);
@@ -267,43 +236,36 @@ async function run(dryRun, extra) {
   } catch (err) {
     if (err.message !== "missing key") out.textContent = String(err);
     throw err;
-  } finally {
-    dry.disabled = false;
-    apply.disabled = false;
   }
 }
 
 async function startOAuth() {
-  let popup = null;
-  try { popup = window.open("about:blank", "_blank"); } catch {}
   auth.disabled = true;
   setAuthURL("");
   currentState = "";
   if (pollTimer) window.clearInterval(pollTimer);
-  setStatus("Starting Codex OAuth...", "");
+  setStatus("Generating Codex OAuth link...", "");
   try {
     const res = await fetch("/v0/management/codex-auth-url?is_webui=true", {headers: authHeaders(false)});
     const data = await readJSON(res);
     if (!data.url || !data.state) throw new Error("CPA did not return an auth URL/state");
     currentState = data.state;
     setAuthURL(data.url);
-    if (popup && !popup.closed) popup.location = data.url;
-    setStatus("Waiting for Codex authentication...", "");
-    startPolling(data.state);
+    setStatus("OAuth link generated. Open or copy it, then paste the callback URL.", "");
   } catch (err) {
-    if (popup && !popup.closed) popup.close();
     setStatus("OAuth start failed: " + err.message, "error");
+  } finally {
     auth.disabled = false;
   }
 }
 
 function startPolling(state) {
-  pollDeadline = Date.now() + 5 * 60 * 1000;
+  const deadline = Date.now() + 5 * 60 * 1000;
   pollTimer = window.setInterval(async () => {
-    if (Date.now() > pollDeadline) {
+    if (Date.now() > deadline) {
       window.clearInterval(pollTimer);
       pollTimer = 0;
-      auth.disabled = false;
+      submitCallback.disabled = false;
       setStatus("OAuth timed out.", "error");
       return;
     }
@@ -313,11 +275,11 @@ function startPolling(state) {
       if (data.status === "wait") return;
       window.clearInterval(pollTimer);
       pollTimer = 0;
-      auth.disabled = false;
+      submitCallback.disabled = false;
       if (data.status === "ok") {
         setStatus("Authentication succeeded. Running fan-out...", "success");
         try {
-          const result = await run(false, {latest_only: true, master: ""});
+          const result = await runFanout();
           setStatus(result && result.ok === false ? "Fan-out failed." : "Authentication succeeded and fan-out completed.", result && result.ok === false ? "error" : "success");
         } catch (err) {
           setStatus("Fan-out failed: " + err.message, "error");
@@ -328,7 +290,7 @@ function startPolling(state) {
     } catch (err) {
       window.clearInterval(pollTimer);
       pollTimer = 0;
-      auth.disabled = false;
+      submitCallback.disabled = false;
       setStatus("OAuth polling failed: " + err.message, "error");
     }
   }, 3000);
@@ -341,6 +303,10 @@ async function sendCallback() {
     callback.focus();
     return;
   }
+  if (!currentState) {
+    setStatus("Generate an OAuth link first.", "error");
+    return;
+  }
   submitCallback.disabled = true;
   try {
     await readJSON(await fetch("/v0/management/oauth-callback", {
@@ -349,9 +315,11 @@ async function sendCallback() {
       body: JSON.stringify({provider: "codex", redirect_url: redirectURL, state: currentState})
     }));
     setStatus("Callback submitted. Waiting for authentication...", "");
+    startPolling(currentState);
   } catch (err) {
     setStatus("Callback submit failed: " + err.message, "error");
-  } finally {
+  }
+  if (!pollTimer) {
     submitCallback.disabled = false;
   }
 }
@@ -362,8 +330,6 @@ auth.addEventListener("click", startOAuth);
 openAuth.addEventListener("click", () => currentAuthURL && window.open(currentAuthURL, "_blank"));
 copyAuth.addEventListener("click", () => currentAuthURL && navigator.clipboard.writeText(currentAuthURL));
 submitCallback.addEventListener("click", sendCallback);
-dry.addEventListener("click", () => run(true));
-apply.addEventListener("click", () => run(false));
 </script>
 </body>
 </html>`
