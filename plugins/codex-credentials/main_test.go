@@ -63,10 +63,15 @@ func TestCredentialStateAcceptsFreshActiveCredential(t *testing.T) {
 	}
 }
 
-func TestCredentialStateUnavailableQuotaDoesNotOfferLogin(t *testing.T) {
+func TestCredentialStateIgnoresCPAEnableAndNonAuthErrors(t *testing.T) {
 	row := accountRow{Status: "error", StatusMessage: "quota exhausted", Unavailable: true}
-	if valid, login, issue := credentialState(row); valid || login || issue != "quota exhausted" {
-		t.Fatalf("valid=%v login=%v issue=%q, want unavailable without login", valid, login, issue)
+	if valid, login, issue := credentialState(row); !valid || login || issue != "" {
+		t.Fatalf("valid=%v login=%v issue=%q, want valid for non-auth error", valid, login, issue)
+	}
+
+	row = accountRow{Status: "disabled", StatusMessage: "disabled", Disabled: true}
+	if valid, login, issue := credentialState(row); !valid || login || issue != "" {
+		t.Fatalf("valid=%v login=%v issue=%q, want disabled account treated as valid", valid, login, issue)
 	}
 }
 

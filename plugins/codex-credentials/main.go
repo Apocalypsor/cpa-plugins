@@ -99,6 +99,10 @@ const indexHTML = `<!doctype html>
     .status.success{background:rgba(22,163,74,.12);color:var(--ok-color)}
     .status.error{background:rgba(220,38,38,.12);color:var(--error-color)}
     .box{background:var(--bg-primary);border:1px dashed var(--border-color);border-radius:var(--radius-lg);padding:14px;margin:14px 0}
+    dialog{border:0;padding:0;background:transparent;color:var(--text-primary);width:min(720px,calc(100vw - 32px))}
+    dialog::backdrop{background:rgba(15,23,42,.45)}
+    dialog .box{margin:0;border-style:solid;box-shadow:0 18px 60px rgba(15,23,42,.22)}
+    .modal-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;font-weight:800}
     .url{font-weight:700;word-break:break-all;overflow-wrap:anywhere;line-height:1.5}
     .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px}
     .cred-card{background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius-lg);padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04);display:flex;flex-direction:column;gap:14px;min-height:260px}
@@ -141,18 +145,24 @@ const indexHTML = `<!doctype html>
     </div>
     <button id="login" class="secondary">Login new account</button>
   </section>
-  <div id="authBox" class="box" hidden>
-    <div id="authUrl" class="url"></div>
-    <div class="row" style="margin-top:10px">
-      <button id="openAuth" class="secondary">Open link</button>
-      <button id="copyAuth" class="secondary">Copy link</button>
+  <dialog id="authDialog">
+    <div class="box">
+      <div class="modal-head">
+        <span>Login account</span>
+        <button id="closeAuth" class="secondary" type="button">Close</button>
+      </div>
+      <div id="authUrl" class="url"></div>
+      <div class="row" style="margin-top:10px">
+        <button id="openAuth" class="secondary">Open link</button>
+        <button id="copyAuth" class="secondary">Copy link</button>
+      </div>
+      <label for="callback" style="margin-top:12px">Callback URL</label>
+      <input id="callback" autocomplete="off" placeholder="http://localhost:1455/auth/callback?code=...&state=...">
+      <div class="row" style="margin-top:10px">
+        <button id="submitCallback">Verify callback</button>
+      </div>
     </div>
-    <label for="callback" style="margin-top:12px">Callback URL</label>
-    <input id="callback" autocomplete="off" placeholder="http://localhost:1455/auth/callback?code=...&state=...">
-    <div class="row" style="margin-top:10px">
-      <button id="submitCallback">Verify callback</button>
-    </div>
-  </div>
+  </dialog>
   <div id="status" class="status" hidden></div>
   <section id="cards" class="cards"><div class="empty">Ready.</div></section>
 </main>
@@ -164,8 +174,9 @@ const refresh = document.getElementById("refresh");
 const login = document.getElementById("login");
 const cards = document.getElementById("cards");
 const statusBox = document.getElementById("status");
-const authBox = document.getElementById("authBox");
+const authDialog = document.getElementById("authDialog");
 const authUrl = document.getElementById("authUrl");
+const closeAuth = document.getElementById("closeAuth");
 const openAuth = document.getElementById("openAuth");
 const copyAuth = document.getElementById("copyAuth");
 const callback = document.getElementById("callback");
@@ -236,8 +247,9 @@ function setStatus(text, kind) {
 
 function setAuthURL(url) {
   currentAuthURL = url || "";
-  authBox.hidden = !currentAuthURL;
   authUrl.textContent = currentAuthURL;
+  if (currentAuthURL) authDialog.showModal();
+  else if (authDialog.open) authDialog.close();
 }
 
 function node(tag, cls, text) {
@@ -249,7 +261,7 @@ function node(tag, cls, text) {
 
 function statusLabel(item) {
   if (item.valid) return "valid";
-  return item.login ? "login" : "unavailable";
+  return "unavailable";
 }
 
 function statusClass(item) {
@@ -318,7 +330,7 @@ function render(items) {
     card.appendChild(top);
 
     card.appendChild(node("div", "title", item.email || item.name || "unknown account"));
-    card.appendChild(node("div", "workspace", "account " + accountUUID(item)));
+    card.appendChild(node("div", "workspace", "Team " + accountUUID(item)));
 
     const meta = node("div", "meta");
     meta.appendChild(node("span", "stat ok", "success " + String(item.success || 0)));
@@ -473,6 +485,7 @@ async function sendCallback() {
 key.value = readSavedManagementKey();
 refresh.addEventListener("click", loadAccounts);
 login.addEventListener("click", () => startOAuth(""));
+closeAuth.addEventListener("click", () => authDialog.close());
 openAuth.addEventListener("click", () => currentAuthURL && window.open(currentAuthURL, "_blank"));
 copyAuth.addEventListener("click", () => currentAuthURL && navigator.clipboard.writeText(currentAuthURL));
 submitCallback.addEventListener("click", sendCallback);
@@ -824,28 +837,13 @@ func enrichRowFromJSON(row *accountRow, raw json.RawMessage) {
 }
 
 func credentialState(row accountRow) (bool, bool, string) {
-	if strings.TrimSpace(row.Issue) != "" {
-		issue := strings.TrimSpace(row.Issue)
-		return false, requiresLoginIssue(issue), issue
+	for _, issue := range []string{row.Issue, row.StatusMessage, row.Status} {
+		issue = strings.TrimSpace(issue)
+		if requiresLoginIssue(issue) {
+			return false, true, issue
+		}
 	}
-	status := strings.ToLower(strings.TrimSpace(row.Status))
-	message := strings.TrimSpace(row.StatusMessage)
-	if row.Disabled || status == "disabled" {
-		return false, false, firstNonEmpty(message, "disabled")
-	}
-	if requiresLoginIssue(message) {
-		return false, true, message
-	}
-	switch {
-	case row.Unavailable:
-		return false, false, firstNonEmpty(message, "unavailable")
-	case status == "error":
-		return false, false, firstNonEmpty(message, status)
-	case status == "active" || status == "unknown" || status == "refreshing" || status == "pending":
-		return true, false, ""
-	default:
-		return true, false, ""
-	}
+	return true, false, ""
 }
 
 func requiresLoginIssue(issue string) bool {
