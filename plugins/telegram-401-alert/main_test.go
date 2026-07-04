@@ -74,16 +74,21 @@ func TestNotificationKeyUsesEmail(t *testing.T) {
 	}
 }
 
-func TestPluginRegistrationExposesManagementPage(t *testing.T) {
+func TestPluginRegistrationExposesConfigFields(t *testing.T) {
 	reg := pluginRegistration()
-	if !reg.Capabilities.UsagePlugin || !reg.Capabilities.ManagementAPI {
-		t.Fatalf("capabilities = %#v, want usage and management", reg.Capabilities)
+	if !reg.Capabilities.UsagePlugin {
+		t.Fatalf("capabilities = %#v, want usage", reg.Capabilities)
 	}
-	raw, err := handleMethod("management.register", nil)
-	if err != nil {
-		t.Fatal(err)
+	if len(reg.Metadata.ConfigFields) != 3 {
+		t.Fatalf("config fields = %d, want 3", len(reg.Metadata.ConfigFields))
 	}
-	if !strings.Contains(string(raw), "Telegram 401 Alert") || !strings.Contains(string(raw), "/index.html") {
-		t.Fatalf("management register missing resource: %s", raw)
+	for _, want := range []string{"telegram_bot_token", "telegram_chat_id", "cooldown_seconds"} {
+		found := false
+		for _, field := range reg.Metadata.ConfigFields {
+			found = found || field.Name == want
+		}
+		if !found {
+			t.Fatalf("config field %q missing: %#v", want, reg.Metadata.ConfigFields)
+		}
 	}
 }

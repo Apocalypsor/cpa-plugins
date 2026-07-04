@@ -15,8 +15,7 @@ Current plugins:
 - `codex-credentials`: show Codex credential email, team, plan, status, and
   OAuth login actions at `/v0/resource/plugins/codex-credentials/index.html`.
 - `telegram-401-alert`: send a Telegram notification when CPA reports an account
-  HTTP 401 failure. Configure it at
-  `/v0/resource/plugins/telegram-401-alert/index.html`.
+  HTTP 401 failure. Configure it from CPA's built-in plugin config UI.
 
 ## Use In CLIProxyAPI
 

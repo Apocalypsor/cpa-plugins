@@ -2,12 +2,12 @@
 
 Sends a Telegram message when CPA reports an account request failure with HTTP 401.
 
-Open `/v0/resource/plugins/telegram-401-alert/index.html` to configure it from
-the CPA UI. The page uses CPA's plugin config API, so CPA writes the config file.
+Configure it from CPA's built-in plugin config UI. The plugin exposes `ConfigFields`,
+so CPA writes the same config object to the config file.
 
 ## Config
 
-The UI writes the same fields as:
+The config fields are:
 
 ```yaml
 plugins:

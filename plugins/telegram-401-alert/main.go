@@ -121,8 +121,7 @@ type configField struct {
 }
 
 type registrationCapabilities struct {
-	UsagePlugin   bool `json:"usage_plugin"`
-	ManagementAPI bool `json:"management_api"`
+	UsagePlugin bool `json:"usage_plugin"`
 }
 
 type settings struct {
@@ -181,187 +180,6 @@ type hostAuthFileEntry struct {
 	Name      string `json:"name,omitempty"`
 	Email     string `json:"email,omitempty"`
 }
-
-type managementRegistration struct {
-	Resources []managementResource `json:"Resources,omitempty"`
-}
-
-type managementResource struct {
-	Path        string `json:"Path"`
-	Menu        string `json:"Menu,omitempty"`
-	Description string `json:"Description,omitempty"`
-}
-
-type managementRequest struct {
-	Method string `json:"Method"`
-	Path   string `json:"Path"`
-}
-
-type managementResponse struct {
-	StatusCode int         `json:"StatusCode"`
-	Headers    http.Header `json:"Headers,omitempty"`
-	Body       []byte      `json:"Body,omitempty"`
-}
-
-const indexHTML = `<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1">
-  <title>Telegram 401 Alert</title>
-  <style>
-    :root{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--primary-color:#2563eb;--bg-primary:#fff;--bg-secondary:#f8fafc;--bg-tertiary:#eef2f7;--text-primary:#0f172a;--text-secondary:#475569;--border-color:#d9e2ec;--error-color:#dc2626;--radius-md:8px}
-    body{margin:0;background:var(--bg-secondary);color:var(--text-primary)}
-    main{max-width:760px;margin:0 auto;padding:32px 20px}
-    h1{font-size:28px;font-weight:700;margin:0 0 24px}
-    .card{background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-    .title{display:flex;align-items:center;gap:10px;font-size:18px;font-weight:700;margin-bottom:14px}
-    .icon{width:24px;height:24px;border-radius:6px;background:linear-gradient(180deg,#38bdf8,#2563eb)}
-    label{display:block;font-weight:600;margin:14px 0 6px}
-    input{box-sizing:border-box;width:100%;font:inherit;padding:10px 12px;border:1px solid var(--border-color);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary)}
-    .row{display:flex;gap:10px;align-items:center;margin-top:16px;flex-wrap:wrap}
-    button{font:inherit;font-weight:650;border:0;border-radius:var(--radius-md);padding:10px 14px;background:var(--primary-color);color:white;cursor:pointer}
-    button.secondary{background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color)}
-    button:disabled{opacity:.55;cursor:not-allowed}
-    .status{padding:10px 12px;border-radius:var(--radius-md);font-size:14px;margin-top:14px;background:rgba(37,99,235,.12);color:var(--primary-color)}
-    .status.success{background:rgba(34,197,94,.12);color:#16a34a}
-    .status.error{background:rgba(220,38,38,.12);color:var(--error-color)}
-    @media (prefers-color-scheme:dark){:root{--bg-primary:#111827;--bg-secondary:#0b1020;--bg-tertiary:#1f2937;--text-primary:#e5e7eb;--text-secondary:#a7b0bf;--border-color:#374151}}
-    @media (max-width:520px){main{padding:20px 14px}}
-  </style>
-</head>
-<body>
-<main>
-  <h1>Telegram 401 Alert</h1>
-  <section class="card">
-    <div class="title"><span class="icon" aria-hidden="true"></span><span>Telegram</span></div>
-    <label for="key">CPA management key</label>
-    <input id="key" type="password" autocomplete="off" placeholder="remote-management.secret-key">
-    <label for="botToken">Bot token</label>
-    <input id="botToken" type="password" autocomplete="off" placeholder="123456:ABC...">
-    <label for="chatId">Chat ID</label>
-    <input id="chatId" autocomplete="off" placeholder="123456789">
-    <label for="cooldown">Cooldown seconds</label>
-    <input id="cooldown" type="number" min="1" step="1" value="1800">
-    <div class="row">
-      <button id="save">Save</button>
-      <button id="load" class="secondary">Reload</button>
-    </div>
-    <div id="status" class="status" hidden></div>
-  </section>
-</main>
-<script>
-const ENC_PREFIX = "enc::v1::";
-const SECRET_SALT = "cli-proxy-api-webui::secure-storage";
-const key = document.getElementById("key");
-const botToken = document.getElementById("botToken");
-const chatId = document.getElementById("chatId");
-const cooldown = document.getElementById("cooldown");
-const save = document.getElementById("save");
-const load = document.getElementById("load");
-const statusBox = document.getElementById("status");
-
-function xorBytes(data, keyBytes) {
-  const result = new Uint8Array(data.length);
-  for (let i = 0; i < data.length; i++) result[i] = data[i] ^ keyBytes[i % keyBytes.length];
-  return result;
-}
-
-function deobfuscate(payload) {
-  if (!payload || !payload.startsWith(ENC_PREFIX)) return payload;
-  const keyBytes = new TextEncoder().encode(SECRET_SALT + "|" + window.location.host + "|" + navigator.userAgent);
-  const raw = Uint8Array.from(atob(payload.slice(ENC_PREFIX.length)), c => c.charCodeAt(0));
-  return new TextDecoder().decode(xorBytes(raw, keyBytes));
-}
-
-function readSavedManagementKey() {
-  for (const name of ["cli-proxy-auth", "managementKey"]) {
-    const raw = localStorage.getItem(name);
-    if (!raw) continue;
-    try {
-      const parsed = JSON.parse(deobfuscate(raw));
-      if (typeof parsed === "string") return parsed;
-      const saved = parsed && (parsed.state || parsed);
-      if (saved && typeof saved.managementKey === "string") return saved.managementKey;
-    } catch {}
-  }
-  return "";
-}
-
-function token() {
-  const value = key.value.trim();
-  if (!value) {
-    setStatus("Missing CPA management key.", "error");
-    key.focus();
-    throw new Error("missing key");
-  }
-  return value;
-}
-
-function headers(json) {
-  const h = {"Authorization": "Bearer " + token()};
-  if (json) h["Content-Type"] = "application/json";
-  return h;
-}
-
-async function readJSON(res) {
-  const text = await res.text();
-  let data = {};
-  try { data = text ? JSON.parse(text) : {}; } catch { data = {error: text}; }
-  if (!res.ok) throw new Error(data.error || data.message || ("HTTP " + res.status));
-  return data;
-}
-
-function setStatus(text, kind) {
-  statusBox.hidden = false;
-  statusBox.textContent = text;
-  statusBox.className = "status" + (kind ? " " + kind : "");
-}
-
-async function loadConfig() {
-  load.disabled = true;
-  try {
-    const data = await readJSON(await fetch("/v0/management/plugins/telegram-401-alert/config", {headers: headers(false)}));
-    botToken.value = data.telegram_bot_token || "";
-    chatId.value = data.telegram_chat_id || "";
-    cooldown.value = data.cooldown_seconds || 1800;
-    setStatus("Loaded.", "success");
-  } catch (err) {
-    if (err.message !== "missing key") setStatus(String(err), "error");
-  } finally {
-    load.disabled = false;
-  }
-}
-
-async function saveConfig() {
-  save.disabled = true;
-  try {
-    const seconds = Math.max(1, Number.parseInt(cooldown.value || "1800", 10));
-    await readJSON(await fetch("/v0/management/plugins/telegram-401-alert/config", {
-      method: "PATCH",
-      headers: headers(true),
-      body: JSON.stringify({
-        telegram_bot_token: botToken.value.trim(),
-        telegram_chat_id: chatId.value.trim(),
-        cooldown_seconds: seconds
-      })
-    }));
-    cooldown.value = seconds;
-    setStatus("Saved. CPA will reload the plugin config.", "success");
-  } catch (err) {
-    if (err.message !== "missing key") setStatus(String(err), "error");
-  } finally {
-    save.disabled = false;
-  }
-}
-
-key.value = readSavedManagementKey();
-load.addEventListener("click", loadConfig);
-save.addEventListener("click", saveConfig);
-if (key.value) loadConfig();
-</script>
-</body>
-</html>`
 
 func main() {}
 
@@ -422,14 +240,6 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 			logHost("error", "telegram-401-alert failed", map[string]any{"error": err.Error()})
 		}
 		return okEnvelope(map[string]any{})
-	case "management.register":
-		return okEnvelope(managementRegistration{Resources: []managementResource{{
-			Path:        "/index.html",
-			Menu:        "Telegram 401 Alert",
-			Description: "Configure Telegram notifications for account 401 failures.",
-		}}})
-	case "management.handle":
-		return handleManagement(request)
 	default:
 		return errorEnvelope("unknown_method", "unknown method: "+method), nil
 	}
@@ -449,38 +259,8 @@ func pluginRegistration() registration {
 				{Name: "cooldown_seconds", Type: "integer", Description: "Duplicate alert cooldown per account. Default: 1800."},
 			},
 		},
-		Capabilities: registrationCapabilities{UsagePlugin: true, ManagementAPI: true},
+		Capabilities: registrationCapabilities{UsagePlugin: true},
 	}
-}
-
-func handleManagement(raw []byte) ([]byte, error) {
-	var req managementRequest
-	if err := json.Unmarshal(raw, &req); err != nil {
-		return nil, err
-	}
-	path := strings.TrimRight(req.Path, "/")
-	if req.Method == http.MethodGet && isIndexResource(path) {
-		return okEnvelope(managementResponse{
-			StatusCode: http.StatusOK,
-			Headers:    http.Header{"Content-Type": []string{"text/html; charset=utf-8"}},
-			Body:       []byte(indexHTML),
-		})
-	}
-	return okEnvelope(managementResponse{
-		StatusCode: http.StatusNotFound,
-		Headers:    http.Header{"Content-Type": []string{"application/json; charset=utf-8"}},
-		Body:       []byte(`{"error":"not_found"}`),
-	})
-}
-
-func isIndexResource(path string) bool {
-	if path == "" {
-		return true
-	}
-	path = strings.TrimSuffix(path, "/")
-	return path == "/index.html" ||
-		path == "/v0/resource/plugins/"+pluginName ||
-		path == "/v0/resource/plugins/"+pluginName+"/index.html"
 }
 
 func applyConfig(raw []byte) {
