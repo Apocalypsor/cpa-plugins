@@ -60,6 +60,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -81,67 +82,79 @@ const indexHTML = `<!doctype html>
   <meta name="viewport" content="width=device-width,initial-scale=1">
   <title>Codex Credentials</title>
   <style>
-    :root{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--primary-color:#2563eb;--bg-primary:#fff;--bg-secondary:#f8fafc;--bg-tertiary:#eef2f7;--text-primary:#0f172a;--text-secondary:#475569;--border-color:#d9e2ec;--error-color:#dc2626;--ok-color:#16a34a;--radius-md:8px}
+    :root{color-scheme:light dark;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;--primary-color:#4f46e5;--bg-primary:#fff;--bg-secondary:#f6f7fb;--bg-tertiary:#eef1f6;--text-primary:#111827;--text-secondary:#6b7280;--text-tertiary:#9ca3af;--border-color:#d9dee8;--error-color:#dc2626;--ok-color:#16a34a;--warn-color:#d97706;--radius-md:8px;--radius-lg:12px}
     body{margin:0;background:var(--bg-secondary);color:var(--text-primary)}
-    main{max-width:1180px;margin:0 auto;padding:32px 20px}
-    h1{font-size:28px;font-weight:700;margin:0 0 24px}
-    .card{background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius-md);padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04)}
-    .head{display:flex;align-items:end;justify-content:space-between;gap:12px;margin-bottom:14px;flex-wrap:wrap}
-    label{display:block;font-weight:600;margin:0 0 6px}
+    main{max-width:1420px;margin:0 auto;padding:28px 20px}
+    h1{font-size:28px;font-weight:700;margin:0}
+    label{display:block;font-weight:650;margin:0 0 6px;color:var(--text-secondary);font-size:13px}
     input{box-sizing:border-box;width:100%;font:inherit;padding:10px 12px;border:1px solid var(--border-color);border-radius:var(--radius-md);background:var(--bg-primary);color:var(--text-primary)}
-    .key{min-width:280px;flex:1}
-    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
-    button{font:inherit;font-weight:650;border:0;border-radius:var(--radius-md);padding:10px 14px;background:var(--primary-color);color:white;cursor:pointer}
+    button{font:inherit;font-weight:700;border:0;border-radius:var(--radius-md);padding:10px 14px;background:var(--primary-color);color:white;cursor:pointer;white-space:nowrap}
     button.secondary{background:var(--bg-tertiary);color:var(--text-primary);border:1px solid var(--border-color)}
     button:disabled{opacity:.55;cursor:not-allowed}
-    table{width:100%;border-collapse:collapse;font-size:14px}
-    th,td{text-align:left;padding:10px;border-bottom:1px solid var(--border-color);vertical-align:top}
-    th{font-size:12px;color:var(--text-secondary);font-weight:700;text-transform:uppercase}
-    .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12px;word-break:break-all}
-    .pill{display:inline-block;border-radius:999px;padding:3px 8px;font-size:12px;font-weight:700;background:rgba(37,99,235,.12);color:var(--primary-color)}
-    .pill.ok{background:rgba(34,197,94,.12);color:var(--ok-color)}
-    .pill.bad{background:rgba(220,38,38,.12);color:var(--error-color)}
-    .status{padding:10px 12px;border-radius:var(--radius-md);font-size:14px;margin:14px 0;background:rgba(37,99,235,.12);color:var(--primary-color)}
-    .status.success{background:rgba(34,197,94,.12);color:var(--ok-color)}
+    .page-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:18px;flex-wrap:wrap}
+    .toolbar{display:flex;align-items:end;gap:12px;margin-bottom:14px;flex-wrap:wrap}
+    .key{min-width:280px;flex:1}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .status{padding:10px 12px;border-radius:var(--radius-md);font-size:14px;margin:14px 0;background:rgba(79,70,229,.12);color:var(--primary-color)}
+    .status.success{background:rgba(22,163,74,.12);color:var(--ok-color)}
     .status.error{background:rgba(220,38,38,.12);color:var(--error-color)}
-    .box{background:var(--bg-secondary);border:1px dashed var(--border-color);border-radius:var(--radius-md);padding:12px;margin:14px 0}
+    .box{background:var(--bg-primary);border:1px dashed var(--border-color);border-radius:var(--radius-lg);padding:14px;margin:14px 0}
     .url{font-weight:700;word-break:break-all;overflow-wrap:anywhere;line-height:1.5}
-    @media (prefers-color-scheme:dark){:root{--bg-primary:#111827;--bg-secondary:#0b1020;--bg-tertiary:#1f2937;--text-primary:#e5e7eb;--text-secondary:#a7b0bf;--border-color:#374151}}
-    @media (max-width:760px){main{padding:20px 14px}table{display:block;overflow-x:auto}.key{min-width:100%}}
+    .cards{display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:18px}
+    .cred-card{background:var(--bg-primary);border:1px solid var(--border-color);border-radius:var(--radius-lg);padding:18px;box-shadow:0 1px 2px rgba(15,23,42,.04);display:flex;flex-direction:column;gap:14px;min-height:260px}
+    .card-top{display:flex;align-items:center;justify-content:space-between;gap:12px}
+    .badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+    .badge{display:inline-flex;align-items:center;border-radius:7px;padding:4px 10px;font-size:12px;font-weight:800;background:var(--bg-tertiary);color:var(--text-secondary);border:1px solid var(--border-color)}
+    .badge.codex{background:rgba(79,70,229,.18);border-color:rgba(79,70,229,.28);color:var(--primary-color)}
+    .badge.ok{background:rgba(22,163,74,.14);border-color:rgba(22,163,74,.24);color:var(--ok-color)}
+    .badge.bad{background:rgba(220,38,38,.14);border-color:rgba(220,38,38,.24);color:var(--error-color)}
+    .badge.warn{background:rgba(217,119,6,.14);border-color:rgba(217,119,6,.24);color:var(--warn-color)}
+    .title{font-size:18px;font-weight:800;line-height:1.35;overflow-wrap:anywhere}
+    .workspace{font-size:14px;font-weight:700;color:var(--text-secondary);overflow-wrap:anywhere}
+    .meta{display:flex;align-items:center;gap:12px;flex-wrap:wrap;color:var(--text-secondary);font-size:13px}
+    .stat{display:inline-flex;align-items:center;gap:6px;border-radius:999px;padding:4px 10px;background:var(--bg-tertiary);font-weight:800}
+    .stat.ok{color:var(--ok-color)}
+    .stat.bad{color:#b91c1c}
+    .health-head{display:flex;align-items:center;justify-content:space-between;color:var(--text-secondary);font-size:13px;font-weight:700}
+    .blocks{display:grid;grid-template-columns:repeat(20,1fr);gap:5px}
+    .block{height:8px;border-radius:999px;background:var(--bg-tertiary)}
+    .block.ok{background:var(--ok-color)}
+    .block.bad{background:var(--error-color)}
+    .issue{font-size:13px;color:var(--text-secondary);min-height:18px;overflow-wrap:anywhere}
+    .card-actions{margin-top:auto;display:flex;align-items:center;justify-content:space-between;gap:12px;border-top:1px dashed var(--border-color);padding-top:14px}
+    .last{font-size:12px;color:var(--text-tertiary);overflow-wrap:anywhere}
+    .empty{grid-column:1/-1;padding:22px;border:1px dashed var(--border-color);border-radius:var(--radius-lg);background:var(--bg-primary);color:var(--text-secondary)}
+    @media (prefers-color-scheme:dark){:root{--bg-primary:#151b29;--bg-secondary:#0b1020;--bg-tertiary:#242c3d;--text-primary:#e5e7eb;--text-secondary:#a7b0bf;--text-tertiary:#777f90;--border-color:#30384a}}
+    @media (max-width:760px){main{padding:20px 14px}.toolbar{align-items:stretch}.key{min-width:100%}.cards{grid-template-columns:1fr}.card-actions{align-items:stretch;flex-direction:column}.card-actions button{width:100%}}
   </style>
 </head>
 <body>
 <main>
-  <h1>Codex Credentials</h1>
-  <section class="card">
-    <div class="head">
-      <div class="key">
-        <label for="key">CPA management key</label>
-        <input id="key" type="password" autocomplete="off" placeholder="remote-management.secret-key">
-      </div>
-      <div class="row">
-        <button id="refresh">Refresh</button>
-        <button id="login" class="secondary">Login account</button>
-      </div>
+  <div class="page-head">
+    <h1>Codex Credentials</h1>
+    <button id="refresh" class="secondary">Refresh</button>
+  </div>
+  <section class="toolbar">
+    <div class="key">
+      <label for="key">CPA management key</label>
+      <input id="key" type="password" autocomplete="off" placeholder="remote-management.secret-key">
     </div>
-    <div id="authBox" class="box" hidden>
-      <div id="authUrl" class="url"></div>
-      <div class="row" style="margin-top:10px">
-        <button id="openAuth" class="secondary">Open link</button>
-        <button id="copyAuth" class="secondary">Copy link</button>
-      </div>
-      <label for="callback" style="margin-top:12px">Callback URL</label>
-      <input id="callback" autocomplete="off" placeholder="http://localhost:1455/auth/callback?code=...&state=...">
-      <div class="row" style="margin-top:10px">
-        <button id="submitCallback">Verify callback</button>
-      </div>
-    </div>
-    <div id="status" class="status" hidden></div>
-    <table>
-      <thead><tr><th>Email</th><th>Team</th><th>Plan</th><th>Account</th><th>Status</th><th>Last Refresh</th><th>Requests</th><th></th></tr></thead>
-      <tbody id="rows"><tr><td colspan="8">Ready.</td></tr></tbody>
-    </table>
+    <button id="login" class="secondary">Login new account</button>
   </section>
+  <div id="authBox" class="box" hidden>
+    <div id="authUrl" class="url"></div>
+    <div class="row" style="margin-top:10px">
+      <button id="openAuth" class="secondary">Open link</button>
+      <button id="copyAuth" class="secondary">Copy link</button>
+    </div>
+    <label for="callback" style="margin-top:12px">Callback URL</label>
+    <input id="callback" autocomplete="off" placeholder="http://localhost:1455/auth/callback?code=...&state=...">
+    <div class="row" style="margin-top:10px">
+      <button id="submitCallback">Verify callback</button>
+    </div>
+  </div>
+  <div id="status" class="status" hidden></div>
+  <section id="cards" class="cards"><div class="empty">Ready.</div></section>
 </main>
 <script>
 const ENC_PREFIX = "enc::v1::";
@@ -149,7 +162,7 @@ const SECRET_SALT = "cli-proxy-api-webui::secure-storage";
 const key = document.getElementById("key");
 const refresh = document.getElementById("refresh");
 const login = document.getElementById("login");
-const rows = document.getElementById("rows");
+const cards = document.getElementById("cards");
 const statusBox = document.getElementById("status");
 const authBox = document.getElementById("authBox");
 const authUrl = document.getElementById("authUrl");
@@ -160,6 +173,8 @@ const submitCallback = document.getElementById("submitCallback");
 
 let currentAuthURL = "";
 let currentState = "";
+let activeAuthIndex = "";
+let accounts = [];
 let pollTimer = 0;
 
 function xorBytes(data, keyBytes) {
@@ -225,47 +240,118 @@ function setAuthURL(url) {
   authUrl.textContent = currentAuthURL;
 }
 
-function td(text, cls) {
-  const cell = document.createElement("td");
-  cell.textContent = text || "";
-  if (cls) cell.className = cls;
-  return cell;
+function node(tag, cls, text) {
+  const el = document.createElement(tag);
+  if (cls) el.className = cls;
+  if (text !== undefined) el.textContent = text;
+  return el;
+}
+
+function statusLabel(item) {
+  if (item.valid) return "valid";
+  return item.login ? "login" : "unavailable";
+}
+
+function statusClass(item) {
+  if (item.valid) return "ok";
+  return item.login ? "bad" : "warn";
+}
+
+function accountUUID(item) {
+  return String(item.account_id || item.account || item.auth_index || "uuid unavailable").trim();
+}
+
+function healthPercent(item) {
+  const ok = Number(item.success || 0);
+  const failed = Number(item.failed || 0);
+  const total = ok + failed;
+  return total > 0 ? Math.round(ok * 1000 / total) / 10 : null;
+}
+
+function renderBlocks(item) {
+  const wrap = node("div", "blocks");
+  const recent = Array.isArray(item.recent_requests) ? item.recent_requests.slice(-20) : [];
+  if (recent.length) {
+    for (const bucket of recent) {
+      const b = node("span", "block");
+      if ((bucket.failed || 0) > 0) b.classList.add("bad");
+      else if ((bucket.success || 0) > 0) b.classList.add("ok");
+      wrap.appendChild(b);
+    }
+    for (let i = recent.length; i < 20; i++) wrap.appendChild(node("span", "block"));
+    return wrap;
+  }
+  const percent = healthPercent(item);
+  const active = percent === null ? 0 : Math.round(percent / 5);
+  const failMarker = item.failed ? Math.min(19, Math.max(0, active - 1)) : -1;
+  for (let i = 0; i < 20; i++) {
+    const b = node("span", "block");
+    if (i < active) b.classList.add("ok");
+    if (i === failMarker) b.classList.add("bad");
+    wrap.appendChild(b);
+  }
+  return wrap;
 }
 
 function render(items) {
-  rows.replaceChildren();
+  cards.replaceChildren();
   if (!items.length) {
-    const tr = document.createElement("tr");
-    tr.appendChild(td("No Codex credentials found."));
-    tr.firstChild.colSpan = 8;
-    rows.appendChild(tr);
+    const empty = node("div", "empty", "No Codex credentials found.");
+    const btn = node("button", "secondary", "Login account");
+    btn.style.marginTop = "12px";
+    btn.addEventListener("click", () => startOAuth(""));
+    empty.appendChild(document.createElement("br"));
+    empty.appendChild(btn);
+    cards.appendChild(empty);
     return;
   }
   for (const item of items) {
-    const tr = document.createElement("tr");
-    tr.appendChild(td(item.email || item.name));
-    tr.appendChild(td(item.team || "-"));
-    tr.appendChild(td(item.plan || "-"));
-    tr.appendChild(td(item.account_id || item.account || "-", "mono"));
-    const state = document.createElement("td");
-    const pill = document.createElement("span");
-    pill.className = "pill " + (item.valid ? "ok" : "bad");
-    pill.textContent = item.valid ? "valid" : (item.login ? "login" : "unavailable");
-    state.appendChild(pill);
-    if (item.issue) state.appendChild(document.createTextNode(" " + item.issue));
-    tr.appendChild(state);
-    tr.appendChild(td(item.last_refresh || "-"));
-    tr.appendChild(td(String(item.success || 0) + "/" + String(item.failed || 0)));
-    const action = document.createElement("td");
-    if (item.login) {
-      const btn = document.createElement("button");
-      btn.textContent = "Login";
-      btn.className = "secondary";
-      btn.addEventListener("click", startOAuth);
-      action.appendChild(btn);
-    }
-    tr.appendChild(action);
-    rows.appendChild(tr);
+    const card = node("article", "cred-card");
+    card.dataset.authIndex = item.auth_index || "";
+
+    const top = node("div", "card-top");
+    const badges = node("div", "badges");
+    badges.appendChild(node("span", "badge codex", "Codex"));
+    if (item.plan) badges.appendChild(node("span", "badge", item.plan));
+    badges.appendChild(node("span", "badge " + statusClass(item), statusLabel(item)));
+    top.appendChild(badges);
+    card.appendChild(top);
+
+    card.appendChild(node("div", "title", item.email || item.name || "unknown account"));
+    card.appendChild(node("div", "workspace", "account " + accountUUID(item)));
+
+    const meta = node("div", "meta");
+    meta.appendChild(node("span", "stat ok", "success " + String(item.success || 0)));
+    meta.appendChild(node("span", "stat bad", "failed " + String(item.failed || 0)));
+    card.appendChild(meta);
+
+    const percent = healthPercent(item);
+    const health = node("div", "health");
+    const healthHead = node("div", "health-head");
+    healthHead.appendChild(node("span", "", "health"));
+    healthHead.appendChild(node("span", "", percent === null ? "-" : String(percent) + "%"));
+    health.appendChild(healthHead);
+    health.appendChild(renderBlocks(item));
+    card.appendChild(health);
+
+    card.appendChild(node("div", "issue", item.issue || item.status_message || ""));
+
+    const actions = node("div", "card-actions");
+    actions.appendChild(node("div", "last", item.last_refresh ? "last refresh " + item.last_refresh : "last refresh -"));
+    const btn = node("button", item.login ? "" : "secondary", "Login account");
+    btn.addEventListener("click", () => startOAuth(item.auth_index || "", btn));
+    actions.appendChild(btn);
+    card.appendChild(actions);
+
+    cards.appendChild(card);
+  }
+}
+
+function mergeAccounts(updated) {
+  const byIndex = new Map((updated || []).map(item => [item.auth_index, item]));
+  accounts = accounts.map(item => byIndex.get(item.auth_index) || item);
+  for (const item of updated || []) {
+    if (!accounts.some(existing => existing.auth_index === item.auth_index)) accounts.push(item);
   }
 }
 
@@ -273,8 +359,9 @@ async function loadAccounts() {
   refresh.disabled = true;
   try {
     const data = await readJSON(await fetch("/v0/management/plugins/codex-credentials/accounts", {headers: headers(false)}));
-    render(data.accounts || []);
-    setStatus("Loaded " + (data.accounts || []).length + " credentials.", "success");
+    accounts = data.accounts || [];
+    render(accounts);
+    setStatus("Loaded " + accounts.length + " credentials.", "success");
   } catch (err) {
     if (err.message !== "missing key") setStatus(String(err), "error");
   } finally {
@@ -282,8 +369,27 @@ async function loadAccounts() {
   }
 }
 
-async function startOAuth() {
+async function refreshAccount(authIndex) {
+  if (!authIndex) {
+    await loadAccounts();
+    return;
+  }
+  const query = new URLSearchParams({auth_index: authIndex});
+  const data = await readJSON(await fetch("/v0/management/plugins/codex-credentials/accounts?" + query, {headers: headers(false)}));
+  const updated = data.accounts || [];
+  if (!updated.length) {
+    await loadAccounts();
+    return;
+  }
+  mergeAccounts(updated);
+  render(accounts);
+  setStatus("Credential refreshed.", "success");
+}
+
+async function startOAuth(authIndex, sourceButton) {
+  activeAuthIndex = authIndex || "";
   login.disabled = true;
+  if (sourceButton) sourceButton.disabled = true;
   setAuthURL("");
   currentState = "";
   if (pollTimer) window.clearInterval(pollTimer);
@@ -298,6 +404,7 @@ async function startOAuth() {
     setStatus("OAuth start failed: " + err.message, "error");
   } finally {
     login.disabled = false;
+    if (sourceButton) sourceButton.disabled = false;
   }
 }
 
@@ -318,9 +425,13 @@ function startPolling(state) {
       pollTimer = 0;
       submitCallback.disabled = false;
       if (data.status === "ok") {
-        setStatus("Authentication succeeded. Refreshing credentials...", "success");
+        setStatus("Authentication succeeded. Refreshing credential...", "success");
         setAuthURL("");
-        await loadAccounts();
+        callback.value = "";
+        const target = activeAuthIndex;
+        activeAuthIndex = "";
+        currentState = "";
+        await refreshAccount(target);
       } else {
         setStatus("Authentication failed: " + (data.error || "unknown error"), "error");
       }
@@ -361,7 +472,7 @@ async function sendCallback() {
 
 key.value = readSavedManagementKey();
 refresh.addEventListener("click", loadAccounts);
-login.addEventListener("click", startOAuth);
+login.addEventListener("click", () => startOAuth(""));
 openAuth.addEventListener("click", () => currentAuthURL && window.open(currentAuthURL, "_blank"));
 copyAuth.addEventListener("click", () => currentAuthURL && navigator.clipboard.writeText(currentAuthURL));
 submitCallback.addEventListener("click", sendCallback);
@@ -427,6 +538,7 @@ type managementResource struct {
 type managementRequest struct {
 	Method string `json:"Method"`
 	Path   string `json:"Path"`
+	Query  url.Values
 }
 
 type managementResponse struct {
@@ -436,24 +548,31 @@ type managementResponse struct {
 }
 
 type hostAuthFileEntry struct {
-	ID             string    `json:"id,omitempty"`
-	AuthIndex      string    `json:"auth_index,omitempty"`
-	Name           string    `json:"name"`
-	Label          string    `json:"label,omitempty"`
-	Type           string    `json:"type,omitempty"`
-	Provider       string    `json:"provider,omitempty"`
-	Status         string    `json:"status,omitempty"`
-	StatusMessage  string    `json:"status_message,omitempty"`
-	Disabled       bool      `json:"disabled,omitempty"`
-	Unavailable    bool      `json:"unavailable,omitempty"`
-	RuntimeOnly    bool      `json:"runtime_only,omitempty"`
-	LastRefresh    time.Time `json:"last_refresh,omitempty"`
-	NextRetryAfter time.Time `json:"next_retry_after,omitempty"`
-	Email          string    `json:"email,omitempty"`
-	AccountType    string    `json:"account_type,omitempty"`
-	Account        string    `json:"account,omitempty"`
-	Success        int64     `json:"success,omitempty"`
-	Failed         int64     `json:"failed,omitempty"`
+	ID             string               `json:"id,omitempty"`
+	AuthIndex      string               `json:"auth_index,omitempty"`
+	Name           string               `json:"name"`
+	Label          string               `json:"label,omitempty"`
+	Type           string               `json:"type,omitempty"`
+	Provider       string               `json:"provider,omitempty"`
+	Status         string               `json:"status,omitempty"`
+	StatusMessage  string               `json:"status_message,omitempty"`
+	Disabled       bool                 `json:"disabled,omitempty"`
+	Unavailable    bool                 `json:"unavailable,omitempty"`
+	RuntimeOnly    bool                 `json:"runtime_only,omitempty"`
+	LastRefresh    time.Time            `json:"last_refresh,omitempty"`
+	NextRetryAfter time.Time            `json:"next_retry_after,omitempty"`
+	Email          string               `json:"email,omitempty"`
+	AccountType    string               `json:"account_type,omitempty"`
+	Account        string               `json:"account,omitempty"`
+	Success        int64                `json:"success,omitempty"`
+	Failed         int64                `json:"failed,omitempty"`
+	RecentRequests []recentRequestEntry `json:"recent_requests,omitempty"`
+}
+
+type recentRequestEntry struct {
+	Time    string `json:"time"`
+	Success int64  `json:"success"`
+	Failed  int64  `json:"failed"`
 }
 
 type hostAuthListResponse struct {
@@ -471,24 +590,25 @@ type hostAuthGetResponse struct {
 }
 
 type accountRow struct {
-	Name           string `json:"name"`
-	AuthIndex      string `json:"auth_index"`
-	Email          string `json:"email"`
-	Team           string `json:"team"`
-	Plan           string `json:"plan"`
-	AccountID      string `json:"account_id"`
-	Account        string `json:"account"`
-	Status         string `json:"status"`
-	StatusMessage  string `json:"status_message"`
-	Issue          string `json:"issue"`
-	Valid          bool   `json:"valid"`
-	Login          bool   `json:"login"`
-	Disabled       bool   `json:"disabled"`
-	Unavailable    bool   `json:"unavailable"`
-	LastRefresh    string `json:"last_refresh"`
-	NextRetryAfter string `json:"next_retry_after"`
-	Success        int64  `json:"success"`
-	Failed         int64  `json:"failed"`
+	Name           string               `json:"name"`
+	AuthIndex      string               `json:"auth_index"`
+	Email          string               `json:"email"`
+	Team           string               `json:"team"`
+	Plan           string               `json:"plan"`
+	AccountID      string               `json:"account_id"`
+	Account        string               `json:"account"`
+	Status         string               `json:"status"`
+	StatusMessage  string               `json:"status_message"`
+	Issue          string               `json:"issue"`
+	Valid          bool                 `json:"valid"`
+	Login          bool                 `json:"login"`
+	Disabled       bool                 `json:"disabled"`
+	Unavailable    bool                 `json:"unavailable"`
+	LastRefresh    string               `json:"last_refresh"`
+	NextRetryAfter string               `json:"next_retry_after"`
+	Success        int64                `json:"success"`
+	Failed         int64                `json:"failed"`
+	RecentRequests []recentRequestEntry `json:"recent_requests"`
 }
 
 type accountsResponse struct {
@@ -609,7 +729,7 @@ func handleManagement(raw []byte) ([]byte, error) {
 		})
 	}
 	if req.Method == http.MethodGet && path == "/v0/management/plugins/"+pluginName+"/accounts" {
-		rows, err := loadAccounts()
+		rows, err := loadAccounts(strings.TrimSpace(req.Query.Get("auth_index")))
 		if err != nil {
 			return okEnvelope(jsonManagementResponse(http.StatusInternalServerError, map[string]any{"error": err.Error()}))
 		}
@@ -628,7 +748,7 @@ func isIndexResource(path string) bool {
 		path == "/v0/resource/plugins/"+pluginName+"/index.html"
 }
 
-func loadAccounts() ([]accountRow, error) {
+func loadAccounts(authIndex string) ([]accountRow, error) {
 	list, err := callHostAuthList()
 	if err != nil {
 		return nil, err
@@ -636,6 +756,9 @@ func loadAccounts() ([]accountRow, error) {
 	rows := make([]accountRow, 0, len(list.Files))
 	for _, entry := range list.Files {
 		if !looksLikeCodex(entry) {
+			continue
+		}
+		if authIndex != "" && entry.AuthIndex != authIndex {
 			continue
 		}
 		row := rowFromEntry(entry)
@@ -676,6 +799,7 @@ func rowFromEntry(entry hostAuthFileEntry) accountRow {
 		NextRetryAfter: formatTime(entry.NextRetryAfter),
 		Success:        entry.Success,
 		Failed:         entry.Failed,
+		RecentRequests: entry.RecentRequests,
 	}
 }
 
