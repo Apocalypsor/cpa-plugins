@@ -2,12 +2,12 @@
   "schema_version": 1,
   "plugins": [
     {
-      "id": "codex-fanout",
-      "name": "Codex Fan-out",
-      "description": "Fan out one Codex access token to sibling CLIProxyAPI workspace auth files.",
+      "id": "codex-credentials",
+      "name": "Codex Credentials",
+      "description": "Show Codex credential email, team, plan, status, and OAuth login actions.",
       "author": "Apocalypsor",
       "repository": "https://github.com/Apocalypsor/cpa-plugins",
-      "homepage": "https://github.com/Apocalypsor/cpa-plugins/tree/main/plugins/codex-fanout",
+      "homepage": "https://github.com/Apocalypsor/cpa-plugins/tree/main/plugins/codex-credentials",
       "tags": ["codex", "auth"]
     },
     {

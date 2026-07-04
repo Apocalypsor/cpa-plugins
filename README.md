@@ -12,9 +12,8 @@ plugins/<plugin-id>/          # one dynamic-library plugin per directory
 
 Current plugins:
 
-- `codex-fanout`: fan out one Codex access token to sibling workspace auth files.
-  It includes a small CPA-hosted UI at
-  `/v0/resource/plugins/codex-fanout/index.html`.
+- `codex-credentials`: show Codex credential email, team, plan, status, and
+  OAuth login actions at `/v0/resource/plugins/codex-credentials/index.html`.
 - `telegram-401-alert`: send a Telegram notification when CPA reports an account
   HTTP 401 failure. Configure it at
   `/v0/resource/plugins/telegram-401-alert/index.html`.
@@ -56,7 +55,7 @@ checksums.txt
 Each zip contains exactly one dynamic library at the zip root:
 
 ```text
-codex-fanout.so
+codex-credentials.so
 ```
 
 To add another plugin:

@@ -70,7 +70,7 @@ const (
 	abiVersion      uint32 = 1
 	schemaVersion   uint32 = 1
 	pluginName             = "telegram-401-alert"
-	pluginVersion          = "0.3.1"
+	pluginVersion          = "0.4.0"
 	defaultCooldown        = 30 * time.Minute
 )
 
