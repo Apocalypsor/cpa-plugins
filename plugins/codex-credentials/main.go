@@ -64,6 +64,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 	"unsafe"
 )
@@ -529,6 +530,7 @@ type configField struct {
 
 type registrationCapabilities struct {
 	ManagementAPI bool `json:"management_api"`
+	UsagePlugin   bool `json:"usage_plugin"`
 }
 
 type managementRegistration struct {
@@ -601,6 +603,29 @@ type hostAuthGetResponse struct {
 	Name      string          `json:"name,omitempty"`
 	JSON      json.RawMessage `json:"json"`
 }
+
+type usageRecord struct {
+	Provider    string       `json:"Provider"`
+	AuthIndex   string       `json:"AuthIndex"`
+	RequestedAt time.Time    `json:"RequestedAt"`
+	Failed      bool         `json:"Failed"`
+	Failure     usageFailure `json:"Failure"`
+}
+
+type usageFailure struct {
+	StatusCode int    `json:"StatusCode"`
+	Body       string `json:"Body"`
+}
+
+type lastRequestState struct {
+	StatusCode int
+	At         time.Time
+}
+
+var lastRequests = struct {
+	sync.Mutex
+	byAuthIndex map[string]lastRequestState
+}{byAuthIndex: map[string]lastRequestState{}}
 
 type accountRow struct {
 	Name           string               `json:"name"`
@@ -709,6 +734,11 @@ func handleMethod(method string, request []byte) ([]byte, error) {
 		})
 	case "management.handle":
 		return handleManagement(request)
+	case "usage.handle":
+		if err := handleUsage(request); err != nil {
+			return nil, err
+		}
+		return okEnvelope(map[string]any{})
 	default:
 		return errorEnvelope("unknown_method", "unknown method: "+method), nil
 	}
@@ -724,7 +754,7 @@ func pluginRegistration() registration {
 			GitHubRepository: "https://github.com/Apocalypsor/cpa-plugins",
 			ConfigFields:     []configField{},
 		},
-		Capabilities: registrationCapabilities{ManagementAPI: true},
+		Capabilities: registrationCapabilities{ManagementAPI: true, UsagePlugin: true},
 	}
 }
 
@@ -784,6 +814,7 @@ func loadAccounts(authIndex string) ([]accountRow, error) {
 			}
 		}
 		row.Valid, row.Login, row.Issue = credentialState(row)
+		applyLastRequestState(&row)
 		rows = append(rows, row)
 	}
 	sort.Slice(rows, func(i, j int) bool {
@@ -792,6 +823,52 @@ func loadAccounts(authIndex string) ([]accountRow, error) {
 		return a < b
 	})
 	return rows, nil
+}
+
+func handleUsage(raw []byte) error {
+	var rec usageRecord
+	if err := json.Unmarshal(raw, &rec); err != nil {
+		return err
+	}
+	if strings.ToLower(strings.TrimSpace(rec.Provider)) != "codex" {
+		return nil
+	}
+	authIndex := strings.TrimSpace(rec.AuthIndex)
+	if authIndex == "" {
+		return nil
+	}
+	status := http.StatusOK
+	if rec.Failed {
+		status = rec.Failure.StatusCode
+		if status <= 0 {
+			status = http.StatusInternalServerError
+		}
+	}
+	at := rec.RequestedAt
+	if at.IsZero() {
+		at = time.Now()
+	}
+	lastRequests.Lock()
+	if previous, ok := lastRequests.byAuthIndex[authIndex]; !ok || !previous.At.After(at) {
+		lastRequests.byAuthIndex[authIndex] = lastRequestState{StatusCode: status, At: at}
+	}
+	lastRequests.Unlock()
+	return nil
+}
+
+func applyLastRequestState(row *accountRow) {
+	if row == nil || row.AuthIndex == "" {
+		return
+	}
+	lastRequests.Lock()
+	state, ok := lastRequests.byAuthIndex[row.AuthIndex]
+	lastRequests.Unlock()
+	if !ok || state.StatusCode != http.StatusUnauthorized {
+		return
+	}
+	row.Valid = false
+	row.Login = true
+	row.Issue = "latest request HTTP 401"
 }
 
 func rowFromEntry(entry hostAuthFileEntry) accountRow {
@@ -842,6 +919,16 @@ func credentialState(row accountRow) (bool, bool, string) {
 		if requiresLoginIssue(issue) {
 			return false, true, issue
 		}
+	}
+	if row.Disabled {
+		return false, false, firstNonEmpty(strings.TrimSpace(row.StatusMessage), "disabled")
+	}
+	if row.Unavailable {
+		return false, false, firstNonEmpty(strings.TrimSpace(row.StatusMessage), strings.TrimSpace(row.Status), "unavailable")
+	}
+	status := strings.ToLower(strings.TrimSpace(row.Status))
+	if status != "" && status != "active" {
+		return false, false, firstNonEmpty(strings.TrimSpace(row.StatusMessage), strings.TrimSpace(row.Status))
 	}
 	return true, false, ""
 }

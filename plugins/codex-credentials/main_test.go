@@ -3,6 +3,7 @@ package main
 import (
 	"encoding/base64"
 	"encoding/json"
+	"net/http"
 	"strings"
 	"testing"
 	"time"
@@ -63,15 +64,57 @@ func TestCredentialStateAcceptsFreshActiveCredential(t *testing.T) {
 	}
 }
 
-func TestCredentialStateIgnoresCPAEnableAndNonAuthErrors(t *testing.T) {
+func TestCredentialStateRejectsUnavailableAndDisabled(t *testing.T) {
 	row := accountRow{Status: "error", StatusMessage: "quota exhausted", Unavailable: true}
-	if valid, login, issue := credentialState(row); !valid || login || issue != "" {
-		t.Fatalf("valid=%v login=%v issue=%q, want valid for non-auth error", valid, login, issue)
+	if valid, login, issue := credentialState(row); valid || login || issue != "quota exhausted" {
+		t.Fatalf("valid=%v login=%v issue=%q, want unavailable quota error", valid, login, issue)
 	}
 
 	row = accountRow{Status: "disabled", StatusMessage: "disabled", Disabled: true}
-	if valid, login, issue := credentialState(row); !valid || login || issue != "" {
-		t.Fatalf("valid=%v login=%v issue=%q, want disabled account treated as valid", valid, login, issue)
+	if valid, login, issue := credentialState(row); valid || login || issue != "disabled" {
+		t.Fatalf("valid=%v login=%v issue=%q, want disabled account unavailable", valid, login, issue)
+	}
+}
+
+func TestLatestUsage401OverridesCredentialState(t *testing.T) {
+	resetLastRequests(t)
+	now := time.Now()
+	raw, _ := json.Marshal(usageRecord{
+		Provider:    "codex",
+		AuthIndex:   "auth-a",
+		RequestedAt: now,
+		Failed:      true,
+		Failure:     usageFailure{StatusCode: http.StatusUnauthorized},
+	})
+	if err := handleUsage(raw); err != nil {
+		t.Fatal(err)
+	}
+	row := accountRow{AuthIndex: "auth-a", Status: "active"}
+	row.Valid, row.Login, row.Issue = credentialState(row)
+	applyLastRequestState(&row)
+	if row.Valid || !row.Login || row.Issue != "latest request HTTP 401" {
+		t.Fatalf("row = valid:%v login:%v issue:%q, want latest 401 login", row.Valid, row.Login, row.Issue)
+	}
+
+	raw, _ = json.Marshal(usageRecord{Provider: "codex", AuthIndex: "auth-a", RequestedAt: now.Add(time.Second)})
+	if err := handleUsage(raw); err != nil {
+		t.Fatal(err)
+	}
+	raw, _ = json.Marshal(usageRecord{
+		Provider:    "codex",
+		AuthIndex:   "auth-a",
+		RequestedAt: now.Add(-time.Second),
+		Failed:      true,
+		Failure:     usageFailure{StatusCode: http.StatusUnauthorized},
+	})
+	if err := handleUsage(raw); err != nil {
+		t.Fatal(err)
+	}
+	row = accountRow{AuthIndex: "auth-a", Status: "active"}
+	row.Valid, row.Login, row.Issue = credentialState(row)
+	applyLastRequestState(&row)
+	if !row.Valid || row.Login || row.Issue != "" {
+		t.Fatalf("row = valid:%v login:%v issue:%q, want success to clear latest 401 overlay", row.Valid, row.Login, row.Issue)
 	}
 }
 
@@ -85,9 +128,34 @@ func TestManagementRegistersAccountsRouteAndIndexResource(t *testing.T) {
 	}
 }
 
+func TestPluginRegistersManagementAndUsageCapabilities(t *testing.T) {
+	raw, err := handleMethod("plugin.register", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{`"management_api":true`, `"usage_plugin":true`} {
+		if !strings.Contains(string(raw), want) {
+			t.Fatalf("plugin registration missing %s: %s", want, raw)
+		}
+	}
+}
+
 func TestFormatTime(t *testing.T) {
 	now := time.Date(2026, 7, 4, 1, 2, 3, 0, time.UTC)
 	if got := formatTime(now); got != "2026-07-04T01:02:03Z" {
 		t.Fatalf("formatTime = %q", got)
 	}
+}
+
+func resetLastRequests(t *testing.T) {
+	t.Helper()
+	lastRequests.Lock()
+	previous := lastRequests.byAuthIndex
+	lastRequests.byAuthIndex = map[string]lastRequestState{}
+	lastRequests.Unlock()
+	t.Cleanup(func() {
+		lastRequests.Lock()
+		lastRequests.byAuthIndex = previous
+		lastRequests.Unlock()
+	})
 }
