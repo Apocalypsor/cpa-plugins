@@ -73,8 +73,10 @@ const (
 	abiVersion    uint32 = 1
 	schemaVersion uint32 = 1
 	pluginName           = "codex-credentials"
-	pluginVersion        = "0.4.0"
 )
+
+// pluginVersion is injected from the release tag with -ldflags.
+var pluginVersion = "0.0.0-dev"
 
 const indexHTML = `<!doctype html>
 <html>

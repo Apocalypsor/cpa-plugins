@@ -70,9 +70,11 @@ const (
 	abiVersion      uint32 = 1
 	schemaVersion   uint32 = 1
 	pluginName             = "telegram-401-alert"
-	pluginVersion          = "0.4.0"
 	defaultCooldown        = 30 * time.Minute
 )
+
+// pluginVersion is injected from the release tag with -ldflags.
+var pluginVersion = "0.0.0-dev"
 
 var state = struct {
 	sync.Mutex

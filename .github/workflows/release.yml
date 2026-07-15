@@ -36,9 +36,12 @@ jobs:
             id="$(basename "$plugin_dir")"
             (
               cd "$plugin_dir"
-              go test ./...
+              import_path="$(go list -f '{{.ImportPath}}' .)"
+              ldflags="-X ${import_path}.pluginVersion=${version}"
+              PLUGIN_VERSION="$version" go test -ldflags "$ldflags" ./...
               CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-                go build -buildmode=c-shared -o "../../build/${id}.${{ matrix.ext }}" .
+                go build -buildmode=c-shared -ldflags "$ldflags" \
+                  -o "../../build/${id}.${{ matrix.ext }}" .
             )
             zip -j "dist/${id}_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.zip" "build/${id}.${{ matrix.ext }}"
           done

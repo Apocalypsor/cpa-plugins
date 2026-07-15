@@ -51,6 +51,9 @@ Releases are repo-wide. A tag like `v0.1.0` builds these assets for every plugin
 checksums.txt
 ```
 
+The release workflow also injects `0.1.0` into each plugin's runtime
+`Metadata.Version`, so CPA reports the same version as the GitHub release.
+
 Each zip contains exactly one dynamic library at the zip root:
 
 ```text

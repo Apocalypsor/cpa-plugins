@@ -1,10 +1,21 @@
 package main
 
 import (
+	"os"
 	"strings"
 	"testing"
 	"time"
 )
+
+func TestPluginRegistrationUsesBuildVersion(t *testing.T) {
+	got := pluginRegistration().Metadata.Version
+	if got != pluginVersion {
+		t.Fatalf("registration version = %q, build version = %q", got, pluginVersion)
+	}
+	if want := os.Getenv("PLUGIN_VERSION"); want != "" && got != want {
+		t.Fatalf("registration version = %q, want injected version %q", got, want)
+	}
+}
 
 func TestParseSettings(t *testing.T) {
 	cfg := parseSettings([]byte(`
