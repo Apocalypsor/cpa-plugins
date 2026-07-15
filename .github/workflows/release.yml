@@ -37,11 +37,14 @@ jobs:
             (
               cd "$plugin_dir"
               import_path="$(go list -f '{{.ImportPath}}' .)"
-              ldflags="-X ${import_path}.pluginVersion=${version}"
-              PLUGIN_VERSION="$version" go test -ldflags "$ldflags" ./...
+              test_ldflags="-X ${import_path}.pluginVersion=${version}"
+              build_ldflags="-X main.pluginVersion=${version}"
+              PLUGIN_VERSION="$version" go test -ldflags "$test_ldflags" ./...
               CGO_ENABLED=1 GOOS=${{ matrix.goos }} GOARCH=${{ matrix.goarch }} \
-                go build -buildmode=c-shared -ldflags "$ldflags" \
+                go build -buildmode=c-shared -ldflags "$build_ldflags" \
                   -o "../../build/${id}.${{ matrix.ext }}" .
+              python3 ../../scripts/verify_plugin_version.py \
+                "../../build/${id}.${{ matrix.ext }}" "$version"
             )
             zip -j "dist/${id}_${version}_${{ matrix.goos }}_${{ matrix.goarch }}.zip" "build/${id}.${{ matrix.ext }}"
           done
